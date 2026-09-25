@@ -902,7 +902,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ==========================================
-   SECRET ADMIN VAULT MODAL (Ctrl + Shift + V)
+   SECRET ADMIN VAULT MODAL (Ctrl + Alt + V)
    ========================================== */
 .secret-modal-backdrop {
   position: fixed;

@@ -9,7 +9,7 @@
  * - Console tampering & variable extraction
  * - Text scraping & element dragging
  * 
- * *Special bypass reserved for Admin shortcut: Ctrl + Shift + V
+ * *Special bypass reserved for Admin shortcut: Ctrl + Alt + V
  */
 
 (function () {
@@ -32,8 +32,8 @@
 
   // 2. BLOCK SNOOPING & DEVTOOLS SHORTCUTS
   window.addEventListener('keydown', (e) => {
-    // Preserve HOMBRE Admin Vault shortcut: Ctrl + Shift + V (or Cmd + Shift + V)
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'V' || e.key === 'v' || e.keyCode === 86)) {
+    // Preserve HOMBRE Admin Vault shortcut: Ctrl + Alt + V (or Cmd + Alt + V)
+    if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'V' || e.key === 'v' || e.code === 'KeyV' || e.keyCode === 86)) {
       return; // ALLOW admin vault shortcut
     }
 

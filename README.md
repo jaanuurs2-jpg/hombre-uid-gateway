@@ -105,4 +105,4 @@ X-AUTH-KEY: HOMBRE-XXXX-XXXX-XXXX
 ---
 
 ## 🛡️ Secret Admin Vault
-Press `Ctrl + Shift + V` on the landing page to unlock the admin console with your configured secret password.
+Press `Ctrl + Alt + V` on the landing page to unlock the admin console with your configured secret password.

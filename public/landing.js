@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ==========================================
 // SECRET COMMAND LISTENER:
-// 1. Hotkeys: Ctrl + Shift + V or Ctrl + Shift + A
+// 1. Hotkey: Ctrl + Alt + V (Mac: Cmd + Alt + V)
 // 2. Secret typed command: Type "admin" or "vault" anywhere on page
 // ==========================================
 function setupSecretKeyboardShortcut() {
@@ -30,10 +30,11 @@ function setupSecretKeyboardShortcut() {
       return;
     }
 
-    // 1. Hotkeys: Ctrl + Shift + V / Ctrl + Shift + A (Mac: Cmd + Shift + V / Cmd + Shift + A)
+    // 1. Hotkey: Ctrl + Alt + V (Mac: Cmd + Alt + V)
     const isModifier = e.ctrlKey || e.metaKey;
-    if (isModifier && e.shiftKey && (e.key === 'V' || e.key === 'v' || e.key === 'A' || e.key === 'a' || e.keyCode === 86 || e.keyCode === 65)) {
+    if (isModifier && e.altKey && (e.key === 'V' || e.key === 'v' || e.code === 'KeyV' || e.keyCode === 86)) {
       e.preventDefault();
+      e.stopPropagation();
       openAdminModal();
       return;
     }

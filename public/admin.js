@@ -127,24 +127,36 @@ function updatePublicUrlDisplay() {
   }
 }
 
+function switchToTab(tabId) {
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(b => {
+    if (b.getAttribute('data-tab') === tabId) {
+      b.classList.add('active');
+    } else {
+      b.classList.remove('active');
+    }
+  });
+
+  document.querySelectorAll('.tab-content').forEach(c => {
+    if (c.id === tabId) {
+      c.classList.add('active');
+    } else {
+      c.classList.remove('active');
+    }
+  });
+
+  if (tabId === 'tab-logs') loadLogs();
+  if (tabId === 'tab-keys') loadKeys();
+  if (tabId === 'tab-docs') updateCodeSnippets();
+}
+
 // Tab Navigation
 function setupTabs() {
   const tabBtns = document.querySelectorAll('.tab-btn');
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      tabBtns.forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-
-      btn.classList.add('active');
       const targetId = btn.getAttribute('data-tab');
-      const targetContent = document.getElementById(targetId);
-      if (targetContent) {
-        targetContent.classList.add('active');
-      }
-
-      if (targetId === 'tab-logs') loadLogs();
-      if (targetId === 'tab-keys') loadKeys();
-      if (targetId === 'tab-docs') updateCodeSnippets();
+      switchToTab(targetId);
     });
   });
 }
@@ -181,8 +193,8 @@ function setupForms() {
       if (newKey) {
         const resultBox = document.getElementById('gen-result-box');
         const resultText = document.getElementById('result-key-text');
-        resultText.value = newKey.key;
-        resultBox.classList.remove('hidden');
+        if (resultText) resultText.value = newKey.key;
+        if (resultBox) resultBox.classList.remove('hidden');
       }
     });
   }
@@ -238,6 +250,80 @@ async function loadStats() {
   }
 }
 
+function renderDashboardRecentKeys(keys) {
+  const tbody = document.getElementById('dashboard-keys-tbody');
+  if (!tbody) return;
+
+  if (!keys || keys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">No keys generated yet. Use the Quick Generator above!</td></tr>`;
+    return;
+  }
+
+  const recent = keys.slice(0, 6);
+  tbody.innerHTML = recent.map(k => {
+    const isExpired = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
+    const effectiveLimit = k.uidLimit !== undefined ? k.uidLimit : (k.maxCalls || 0);
+    const slotsConsumed = k.slotsConsumed !== undefined 
+      ? k.slotsConsumed 
+      : ((k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : (k.uidsCount || 0));
+
+    let statusBadge = '<span class="badge badge-success">Active</span>';
+    if (!k.isActive) statusBadge = '<span class="badge badge-warning">Paused</span>';
+    else if (isExpired) statusBadge = '<span class="badge badge-danger">Expired</span>';
+    else if (effectiveLimit > 0 && slotsConsumed >= effectiveLimit) statusBadge = '<span class="badge badge-danger">Limit Full</span>';
+
+    const expiryStr = k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : 'Lifetime';
+    const quotaStr = effectiveLimit > 0 ? `${slotsConsumed}/${effectiveLimit}` : `${slotsConsumed} (Unlimited)`;
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(k.name)}</strong></td>
+        <td><span class="key-code">${escapeHtml(k.key)}</span></td>
+        <td>${statusBadge}</td>
+        <td>${expiryStr}</td>
+        <td><strong>${quotaStr}</strong></td>
+        <td>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyPlain('${escapeHtml(k.key)}')">Copy</button>
+          <button type="button" class="btn btn-accent btn-sm" onclick="switchToTab('tab-keys')">Manage</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// Success Modal Controller
+let lastCreatedKey = null;
+
+function showKeySuccessModal(keyObj) {
+  lastCreatedKey = keyObj;
+  const modal = document.getElementById('key-success-modal');
+  if (!modal) return;
+
+  const keyEl = document.getElementById('modal-success-key');
+  const clientEl = document.getElementById('modal-success-client');
+  const limitEl = document.getElementById('modal-success-limit');
+  const validityEl = document.getElementById('modal-success-validity');
+
+  if (keyEl) keyEl.innerText = keyObj.key;
+  if (clientEl) clientEl.innerText = keyObj.name || 'Unnamed Client';
+  if (limitEl) limitEl.innerText = (keyObj.uidLimit > 0) ? `${keyObj.uidLimit} UIDs` : 'Unlimited';
+  if (validityEl) validityEl.innerText = keyObj.days ? `${keyObj.days} Days` : (keyObj.expiresAt ? 'Active' : 'Lifetime');
+
+  modal.classList.remove('hidden');
+}
+
+function closeKeySuccessModal() {
+  const modal = document.getElementById('key-success-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copySuccessModalKey() {
+  if (lastCreatedKey && lastCreatedKey.key) {
+    copyPlain(lastCreatedKey.key);
+    showToast('Bypass Key copied to clipboard! 📋');
+  }
+}
+
 // Keys
 async function loadKeys() {
   try {
@@ -247,6 +333,7 @@ async function loadKeys() {
     if (!res.ok) return;
     currentKeys = await res.json();
     renderKeysTable(currentKeys);
+    renderDashboardRecentKeys(currentKeys);
     populateKeySelects(currentKeys);
     updateCodeSnippets();
   } catch (err) {
@@ -266,9 +353,24 @@ async function createKey(payload) {
     });
 
     const data = await res.json();
-    if (res.ok && data.success) {
+    if (res.ok && data.success && data.key) {
       showToast(`Key Created: ${data.key.key}`);
-      loadKeys();
+
+      // Clear filters so new key is immediately visible
+      const searchInput = document.getElementById('key-search-input');
+      if (searchInput) searchInput.value = '';
+      const statusFilter = document.getElementById('key-status-filter');
+      if (statusFilter) statusFilter.value = 'all';
+
+      // Immediate in-memory prepend
+      currentKeys = [data.key, ...currentKeys.filter(k => k.id !== data.key.id)];
+      renderKeysTable(currentKeys);
+      renderDashboardRecentKeys(currentKeys);
+      populateKeySelects(currentKeys);
+
+      // Show key created success card
+      showKeySuccessModal(data.key);
+
       loadStats();
       return data.key;
     } else {

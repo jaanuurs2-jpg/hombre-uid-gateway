@@ -198,8 +198,11 @@
 
   // Active DevTools window dimension & debugger detector
   function checkDevTools() {
-    const widthThreshold = window.outerWidth - window.innerWidth > 160;
-    const heightThreshold = window.outerHeight - window.innerHeight > 160;
+    // Avoid false positives on touch/mobile devices
+    if (navigator.maxTouchPoints > 1 || window.innerWidth <= 768) return;
+
+    const widthThreshold = (window.outerWidth - window.innerWidth) > 220;
+    const heightThreshold = (window.outerHeight - window.innerHeight) > 220;
 
     if (widthThreshold || heightThreshold) {
       if (!devtoolsDetected) {
@@ -214,18 +217,20 @@
   }
 
   window.addEventListener('resize', checkDevTools);
-  setInterval(checkDevTools, 800);
+  setInterval(checkDevTools, 1200);
 
   // 6. TIMED DEBUGGER TRAP (Interrupts step execution in devtools)
   setInterval(() => {
+    if (navigator.maxTouchPoints > 1) return;
     const startTime = performance.now();
-    // Debugger breakpoint fires only if DevTools are active
-    (function () {}['constructor']('debugger')());
+    try {
+      (function () {}['constructor']('debugger')());
+    } catch (e) {}
     const duration = performance.now() - startTime;
-    if (duration > 100) {
+    if (duration > 350) {
       triggerDevToolsLockdown();
     }
-  }, 1200);
+  }, 2500);
 
   // 7. TOAST NOTIFICATION FOR BLOCKED ACTIONS
   function showSecurityWarning(message) {

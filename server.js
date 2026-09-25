@@ -97,9 +97,57 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const KEYS_FILE = path.join(DATA_DIR, 'keys.json');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.json');
+const KEYS_BACKUP_FILE = path.join(DATA_DIR, 'keys.backup.json');
 
-// Helper to read / write JSON files
+// In-Memory Master Store with Atomic Sync & Backup Recovery
+let memoryKeys = [];
+let memoryLogs = [];
+
+function loadDataFromDisk() {
+  try {
+    if (fs.existsSync(KEYS_FILE)) {
+      const content = fs.readFileSync(KEYS_FILE, 'utf8');
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        memoryKeys = parsed;
+      }
+    }
+  } catch (err) {
+    console.error('Initial keys read error:', err);
+  }
+
+  // Restore from backup if primary was empty or missing
+  if (memoryKeys.length === 0 && fs.existsSync(KEYS_BACKUP_FILE)) {
+    try {
+      const backup = JSON.parse(fs.readFileSync(KEYS_BACKUP_FILE, 'utf8'));
+      if (Array.isArray(backup) && backup.length > 0) {
+        memoryKeys = backup;
+        console.log(`[HOMBRE BACKUP] Restored ${memoryKeys.length} keys from backup.`);
+      }
+    } catch (err) {
+      console.error('Error reading KEYS_BACKUP_FILE:', err);
+    }
+  }
+
+  try {
+    if (fs.existsSync(LOGS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(LOGS_FILE, 'utf8'));
+      if (Array.isArray(parsed)) memoryLogs = parsed;
+    }
+  } catch (err) {
+    console.error('Initial logs read error:', err);
+  }
+}
+loadDataFromDisk();
+
+// Helper to read / write JSON with in-memory caching and atomic file writes
 function readJSON(file, defaultVal) {
+  if (file === KEYS_FILE) {
+    return memoryKeys;
+  }
+  if (file === LOGS_FILE) {
+    return memoryLogs;
+  }
   try {
     if (fs.existsSync(file)) {
       return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -111,20 +159,39 @@ function readJSON(file, defaultVal) {
 }
 
 function writeJSON(file, data) {
+  if (file === KEYS_FILE) {
+    memoryKeys = Array.isArray(data) ? data : [];
+    try {
+      const tempFile = `${KEYS_FILE}.tmp`;
+      const str = JSON.stringify(memoryKeys, null, 2);
+      fs.writeFileSync(tempFile, str, 'utf8');
+      fs.renameSync(tempFile, KEYS_FILE);
+      if (memoryKeys.length > 0) {
+        fs.writeFileSync(KEYS_BACKUP_FILE, str, 'utf8');
+      }
+    } catch (err) {
+      console.error(`Error writing ${KEYS_FILE}:`, err);
+    }
+    return;
+  }
+
+  if (file === LOGS_FILE) {
+    memoryLogs = Array.isArray(data) ? data : [];
+    try {
+      const tempFile = `${LOGS_FILE}.tmp`;
+      fs.writeFileSync(tempFile, JSON.stringify(memoryLogs, null, 2), 'utf8');
+      fs.renameSync(tempFile, LOGS_FILE);
+    } catch (err) {
+      console.error(`Error writing ${LOGS_FILE}:`, err);
+    }
+    return;
+  }
+
   try {
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch (err) {
     console.error(`Error writing ${file}:`, err);
   }
-}
-
-// Initialize empty keys file if missing
-if (!fs.existsSync(KEYS_FILE)) {
-  writeJSON(KEYS_FILE, []);
-}
-
-if (!fs.existsSync(LOGS_FILE)) {
-  writeJSON(LOGS_FILE, []);
 }
 
 function addLog(logEntry) {

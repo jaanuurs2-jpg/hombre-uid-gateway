@@ -453,12 +453,23 @@ app.get('/api/admin/stats', requireAdminAuth, (req, res) => {
     return k.isActive && notExpired && quotaOk;
   }).length;
 
+  let totalActiveUids = 0;
+  let totalSlotsConsumed = 0;
+  keys.forEach(k => {
+    totalActiveUids += (k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : 0;
+    totalSlotsConsumed += k.slotsConsumed !== undefined 
+      ? k.slotsConsumed 
+      : ((k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : 0);
+  });
+
   const totalRequests = logs.length;
   const successfulRequests = logs.filter(l => l.success).length;
 
   res.json({
     totalKeys,
     activeKeys,
+    totalActiveUids,
+    totalSlotsConsumed,
     totalRequests,
     successfulRequests,
     upstreamTunnel: 'PROTECTED_AIR_GAPPED',
@@ -755,6 +766,45 @@ app.post('/api/admin/keys', requireAdminAuth, (req, res) => {
     success: true,
     message: 'HOMBRE API Key successfully created!',
     key: newKey
+  });
+});
+
+// Update Key Details (Name, UID Limit, or Duration)
+app.patch('/api/admin/keys/:id', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const { name, uidLimit, additionalDays } = req.body;
+  const keys = readJSON(KEYS_FILE, []);
+  const keyObj = keys.find(k => k.id === id);
+
+  if (!keyObj) {
+    return res.status(404).json({ success: false, error: 'Key not found' });
+  }
+
+  if (name !== undefined && String(name).trim()) {
+    keyObj.name = String(name).trim();
+  }
+
+  if (uidLimit !== undefined) {
+    const parsed = parseInt(uidLimit, 10);
+    keyObj.uidLimit = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
+    keyObj.maxCalls = keyObj.uidLimit;
+  }
+
+  if (additionalDays) {
+    const extra = parseInt(additionalDays, 10);
+    if (!isNaN(extra) && extra > 0) {
+      const baseTime = (keyObj.expiresAt && new Date(keyObj.expiresAt).getTime() > Date.now())
+        ? new Date(keyObj.expiresAt).getTime()
+        : Date.now();
+      keyObj.expiresAt = new Date(baseTime + extra * 24 * 60 * 60 * 1000).toISOString();
+    }
+  }
+
+  writeJSON(KEYS_FILE, keys);
+  res.json({
+    success: true,
+    message: 'Key updated successfully!',
+    key: keyObj
   });
 });
 

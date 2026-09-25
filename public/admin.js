@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupDirectLoginForm();
   setupAdminAnimations();
   setupModalAddUidForm();
+  setupEditKeyForm();
   await checkAuthAndInitialize();
 });
 
@@ -53,12 +54,20 @@ async function checkAuthAndInitialize() {
 
       const searchInput = document.getElementById('key-search-input');
       if (searchInput) {
-        searchInput.addEventListener('input', (e) => filterKeysTable(e.target.value));
+        searchInput.addEventListener('input', () => applyKeyFilters());
+      }
+      const keyStatusFilter = document.getElementById('key-status-filter');
+      if (keyStatusFilter) {
+        keyStatusFilter.addEventListener('change', () => applyKeyFilters());
       }
 
       const logSearch = document.getElementById('log-search-input');
       if (logSearch) {
-        logSearch.addEventListener('input', (e) => filterLogsTable(e.target.value));
+        logSearch.addEventListener('input', () => applyLogFilters());
+      }
+      const logStatusFilter = document.getElementById('log-status-filter');
+      if (logStatusFilter) {
+        logStatusFilter.addEventListener('change', () => applyLogFilters());
       }
     } else {
       clearAdminToken();
@@ -195,15 +204,31 @@ async function loadStats() {
     if (!res.ok) return;
     const data = await res.json();
 
-    document.getElementById('stat-total-keys').innerText = data.totalKeys;
-    document.getElementById('stat-active-keys').innerText = data.activeKeys;
-    document.getElementById('stat-total-requests').innerText = data.totalRequests;
+    const elTotal = document.getElementById('stat-total-keys');
+    const elActive = document.getElementById('stat-active-keys');
+    const elUids = document.getElementById('stat-active-uids');
+    const elSlots = document.getElementById('stat-slots-consumed');
+    const elRequests = document.getElementById('stat-total-requests');
+    const elRate = document.getElementById('stat-success-rate');
+    const elUptime = document.getElementById('stat-uptime-desc');
+
+    if (elTotal) elTotal.innerText = data.totalKeys;
+    if (elActive) elActive.innerText = data.activeKeys;
+    if (elUids) elUids.innerText = data.totalActiveUids || 0;
+    if (elSlots) elSlots.innerText = data.totalSlotsConsumed || 0;
+    if (elRequests) elRequests.innerText = data.totalRequests;
 
     if (data.totalRequests > 0) {
       const rate = Math.round((data.successfulRequests / data.totalRequests) * 100);
-      document.getElementById('stat-success-rate').innerText = `${rate}%`;
+      if (elRate) elRate.innerText = `${rate}%`;
     } else {
-      document.getElementById('stat-success-rate').innerText = `100%`;
+      if (elRate) elRate.innerText = `100%`;
+    }
+
+    if (elUptime && data.uptimeSeconds) {
+      const mins = Math.floor(data.uptimeSeconds / 60);
+      const secs = data.uptimeSeconds % 60;
+      elUptime.innerText = `Uptime: ${mins}m ${secs}s • Zero Degradation`;
     }
   } catch (err) {
     console.error('Failed to load stats:', err);
@@ -322,8 +347,16 @@ function renderKeysTable(keys) {
       : '<span class="badge badge-neutral">Lifetime</span>';
 
     const createdStr = new Date(k.createdAt).toLocaleDateString();
+    const percent = effectiveLimit > 0 ? Math.min(100, Math.round((slotsConsumed / effectiveLimit) * 100)) : 0;
+    const barColor = percent >= 100 ? 'fill-red' : (percent >= 70 ? 'fill-yellow' : 'fill-green');
+    const progressBar = effectiveLimit > 0 ? `
+      <div class="quota-progress-track">
+        <div class="quota-progress-fill ${barColor}" style="width: ${percent}%;"></div>
+      </div>
+    ` : '';
+
     const quotaStr = effectiveLimit > 0 
-      ? `<span style="font-family: var(--font-mono); font-size: 12px; ${isLimitFull ? 'color: var(--accent-rose); font-weight: 700;' : ''}"><strong>${slotsConsumed}</strong> / ${effectiveLimit} Slots Used</span>`
+      ? `<span style="font-family: var(--font-mono); font-size: 12px; ${isLimitFull ? 'color: var(--accent-rose); font-weight: 700;' : ''}"><strong>${slotsConsumed}</strong> / ${effectiveLimit} Slots (${percent}%)</span>`
       : `<span style="font-family: var(--font-mono); font-size: 12px;"><strong>${slotsConsumed}</strong> (Unlimited)</span>`;
 
     const viewUidsBtn = `<button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" onclick="openKeyUidsModal('${k.id}')">👁️ Active (${activeUids})</button>`;
@@ -336,9 +369,10 @@ function renderKeysTable(keys) {
         <td>${statusBadge}</td>
         <td>${expiryStr}</td>
         <td>
-          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
+          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 3px;">
             ${quotaStr}
-            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            ${progressBar}
+            <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px;">
               ${viewUidsBtn}
               ${addUidBtn}
             </div>
@@ -347,6 +381,7 @@ function renderKeysTable(keys) {
         <td>${createdStr}</td>
         <td>
           <div class="action-btns">
+            <button class="icon-btn" title="Modify Key Quota / Name" onclick="openEditKeyModal('${k.id}')">⚙️</button>
             <button class="icon-btn" title="Copy Key" onclick="copyPlain('${escapeHtml(k.key)}')">📋</button>
             <button class="icon-btn" title="Toggle Status" onclick="toggleKey('${k.id}')">${k.isActive ? '⏸️' : '▶️'}</button>
             <button class="icon-btn icon-btn-danger" title="Delete Key" onclick="deleteKey('${k.id}')">🗑️</button>
@@ -357,17 +392,65 @@ function renderKeysTable(keys) {
   }).join('');
 }
 
+function applyKeyFilters() {
+  const searchInput = document.getElementById('key-search-input');
+  const statusFilter = document.getElementById('key-status-filter');
+  const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const status = statusFilter ? statusFilter.value : 'all';
+
+  let filtered = currentKeys;
+  if (status !== 'all') {
+    filtered = filtered.filter(k => {
+      const isExpired = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
+      const effectiveLimit = k.uidLimit !== undefined ? k.uidLimit : (k.maxCalls || 0);
+      const slotsConsumed = k.slotsConsumed !== undefined 
+        ? k.slotsConsumed 
+        : ((k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : (k.uidsCount || k.usageCount || 0));
+      const isLimitFull = effectiveLimit > 0 && slotsConsumed >= effectiveLimit;
+
+      if (status === 'active') return k.isActive && !isExpired && !isLimitFull;
+      if (status === 'paused') return !k.isActive;
+      if (status === 'expired') return isExpired;
+      if (status === 'limit_full') return isLimitFull;
+      return true;
+    });
+  }
+
+  if (q) {
+    filtered = filtered.filter(k => 
+      k.key.toLowerCase().includes(q) || 
+      (k.name && k.name.toLowerCase().includes(q)) ||
+      (k.registeredUids && k.registeredUids.some(u => String(u).toLowerCase().includes(q)))
+    );
+  }
+
+  renderKeysTable(filtered);
+}
+
 function filterKeysTable(query) {
-  const q = query.toLowerCase().trim();
-  if (!q) {
-    renderKeysTable(currentKeys);
+  applyKeyFilters();
+}
+
+function exportKeysCSV() {
+  if (!currentKeys || currentKeys.length === 0) {
+    showToast('No keys to export');
     return;
   }
-  const filtered = currentKeys.filter(k => 
-    k.key.toLowerCase().includes(q) || 
-    (k.name && k.name.toLowerCase().includes(q))
-  );
-  renderKeysTable(filtered);
+  const headers = ['Client Label', 'Bypass Key', 'Status', 'Expires', 'Slots Consumed', 'UID Limit', 'Active UIDs', 'Created At'];
+  const rows = currentKeys.map(k => [
+    `"${(k.name || '').replace(/"/g, '""')}"`,
+    `"${k.key}"`,
+    k.isActive ? 'Active' : 'Paused',
+    k.expiresAt ? new Date(k.expiresAt).toISOString() : 'Lifetime',
+    k.slotsConsumed || (k.registeredUids ? k.registeredUids.length : 0),
+    k.uidLimit || 0,
+    k.registeredUids ? k.registeredUids.length : 0,
+    new Date(k.createdAt).toISOString()
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  downloadBlob(csvContent, 'hombre-managed-keys.csv', 'text/csv');
+  showToast('Keys exported to CSV! 📥');
 }
 
 function populateKeySelects(keys) {
@@ -563,20 +646,54 @@ async function loadLogs() {
   }
 }
 
+function applyLogFilters() {
+  const logSearch = document.getElementById('log-search-input');
+  const statusFilter = document.getElementById('log-status-filter');
+  const q = logSearch ? logSearch.value.toLowerCase().trim() : '';
+  const status = statusFilter ? statusFilter.value : 'all';
+
+  let filtered = currentLogs;
+  if (status !== 'all') {
+    const code = parseInt(status, 10);
+    filtered = filtered.filter(l => l.status === code);
+  }
+
+  if (q) {
+    filtered = filtered.filter(l => 
+      (l.key && l.key.toLowerCase().includes(q)) ||
+      (l.clientName && l.clientName.toLowerCase().includes(q)) ||
+      (l.uid && String(l.uid).toLowerCase().includes(q)) ||
+      (l.status && String(l.status).toLowerCase().includes(q)) ||
+      (l.ip && String(l.ip).toLowerCase().includes(q))
+    );
+  }
+
+  renderLogsTable(filtered);
+}
+
 function filterLogsTable(query) {
-  const q = (query || '').toLowerCase().trim();
-  if (!q) {
-    renderLogsTable(currentLogs);
+  applyLogFilters();
+}
+
+function exportLogsCSV() {
+  if (!currentLogs || currentLogs.length === 0) {
+    showToast('No logs to export');
     return;
   }
-  const filtered = currentLogs.filter(l => 
-    (l.key && l.key.toLowerCase().includes(q)) ||
-    (l.clientName && l.clientName.toLowerCase().includes(q)) ||
-    (l.uid && String(l.uid).toLowerCase().includes(q)) ||
-    (l.status && String(l.status).toLowerCase().includes(q)) ||
-    (l.ip && String(l.ip).toLowerCase().includes(q))
-  );
-  renderLogsTable(filtered);
+  const headers = ['Timestamp', 'Bypass Key', 'Client Name', 'Target UID', 'Status', 'Latency (ms)', 'Caller IP'];
+  const rows = currentLogs.map(l => [
+    new Date(l.timestamp).toISOString(),
+    `"${l.key || ''}"`,
+    `"${(l.clientName || '').replace(/"/g, '""')}"`,
+    `"${l.uid || ''}"`,
+    l.status,
+    l.durationMs || 0,
+    `"${l.ip || ''}"`
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  downloadBlob(csvContent, 'hombre-request-logs.csv', 'text/csv');
+  showToast('Logs exported to CSV! 📥');
 }
 
 function renderLogsTable(logs) {
@@ -819,10 +936,98 @@ function copyAllModalUids() {
   showToast(`Copied ${currentModalUids.length} UIDs to clipboard! 📋`);
 }
 
+// ==========================================
+// EDIT KEY MODAL CONTROLLER
+// ==========================================
+let currentEditKeyId = null;
+
+function openEditKeyModal(keyId) {
+  const k = currentKeys.find(item => item.id === keyId);
+  if (!k) return;
+
+  currentEditKeyId = keyId;
+  const modal = document.getElementById('edit-key-modal');
+  const codeEl = document.getElementById('edit-key-code');
+  const idInput = document.getElementById('edit-key-id');
+  const nameInput = document.getElementById('edit-key-name');
+  const limitInput = document.getElementById('edit-key-limit');
+  const addDaysInput = document.getElementById('edit-key-add-days');
+
+  if (codeEl) codeEl.innerText = k.key;
+  if (idInput) idInput.value = k.id;
+  if (nameInput) nameInput.value = k.name || '';
+  if (limitInput) limitInput.value = k.uidLimit !== undefined ? k.uidLimit : (k.maxCalls || 0);
+  if (addDaysInput) addDaysInput.value = '';
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeEditKeyModal() {
+  const modal = document.getElementById('edit-key-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function setupEditKeyForm() {
+  const form = document.getElementById('edit-key-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentEditKeyId) return;
+
+    const name = document.getElementById('edit-key-name').value;
+    const uidLimit = document.getElementById('edit-key-limit').value;
+    const additionalDays = document.getElementById('edit-key-add-days').value;
+    const btn = document.getElementById('btn-save-key-edit');
+
+    btn.disabled = true;
+    btn.innerText = 'Saving...';
+
+    try {
+      const res = await fetch(`/api/admin/keys/${currentEditKeyId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': getAdminToken()
+        },
+        body: JSON.stringify({ name, uidLimit, additionalDays })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Key settings updated successfully! ✅');
+        closeEditKeyModal();
+        loadKeys();
+        loadStats();
+      } else {
+        alert(data.error || 'Failed to update key');
+      }
+    } catch (err) {
+      alert('Network error updating key');
+    } finally {
+      btn.disabled = false;
+      btn.innerText = 'Save Changes';
+    }
+  });
+}
+
+function downloadBlob(content, filename, contentType) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // Close modal with Escape key
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeKeyUidsModal();
+    closeEditKeyModal();
   }
 });
 

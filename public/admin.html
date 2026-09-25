@@ -80,15 +80,15 @@
 
       <!-- ================= TAB: DASHBOARD ================= -->
       <section id="tab-dashboard" class="tab-content active">
-        <!-- Stats Grid -->
-        <div class="stats-grid">
+        <!-- Stats Grid (6-Card Enhanced Executive Metrics) -->
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
           <div class="stat-card spotlight-card interactive-card">
             <div class="stat-header">
               <span class="stat-title">Issued UID Keys</span>
               <span class="badge badge-subtle">Total</span>
             </div>
             <div class="stat-value" id="stat-total-keys">0</div>
-            <div class="stat-desc">Cryptographically generated UID keys</div>
+            <div class="stat-desc">Cryptographically generated keys</div>
           </div>
 
           <div class="stat-card spotlight-card interactive-card">
@@ -97,7 +97,25 @@
               <span class="badge badge-success">Valid</span>
             </div>
             <div class="stat-value" style="color: var(--accent-emerald);" id="stat-active-keys">0</div>
-            <div class="stat-desc">Currently active bypass keys</div>
+            <div class="stat-desc">Active keys within quota</div>
+          </div>
+
+          <div class="stat-card spotlight-card interactive-card">
+            <div class="stat-header">
+              <span class="stat-title">Active Game UIDs</span>
+              <span class="badge badge-success">Live</span>
+            </div>
+            <div class="stat-value" style="color: #60a5fa;" id="stat-active-uids">0</div>
+            <div class="stat-desc">Active in master bypass network</div>
+          </div>
+
+          <div class="stat-card spotlight-card interactive-card">
+            <div class="stat-header">
+              <span class="stat-title">Slots Consumed</span>
+              <span class="badge badge-subtle">Quota</span>
+            </div>
+            <div class="stat-value" style="color: #f59e0b;" id="stat-slots-consumed">0</div>
+            <div class="stat-desc">Non-refundable quota slots burned</div>
           </div>
 
           <div class="stat-card spotlight-card interactive-card">
@@ -111,11 +129,11 @@
 
           <div class="stat-card spotlight-card interactive-card">
             <div class="stat-header">
-              <span class="stat-title">Success Rate</span>
-              <span class="badge badge-subtle">Health</span>
+              <span class="stat-title">Success Rate & Health</span>
+              <span class="badge badge-subtle">Live</span>
             </div>
             <div class="stat-value" id="stat-success-rate">100%</div>
-            <div class="stat-desc">Zero forwarding degradation</div>
+            <div class="stat-desc" id="stat-uptime-desc">Zero forwarding degradation</div>
           </div>
         </div>
 
@@ -205,6 +223,23 @@
                 <label>Master Upstream Key</label>
                 <div class="badge badge-warning" style="align-self: flex-start; padding: 5px 12px; font-size: 12px;">LOCKED IN SERVER ENVIRONMENT (.ENV)</div>
               </div>
+
+              <!-- Live Security Status Indicators -->
+              <div class="security-badge-grid">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                  <span style="color: #fff; font-weight: 500;">🛡️ Brute-Force Lockout:</span>
+                  <span class="badge badge-success" style="font-size: 11px;">ACTIVE (5 tries = 10m lock)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                  <span style="color: #fff; font-weight: 500;">⚡ Anti-DDoS Rate Limiter:</span>
+                  <span class="badge badge-success" style="font-size: 11px;">ACTIVE (120 req/min/IP)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                  <span style="color: #fff; font-weight: 500;">🔒 Timing-Safe Crypto Auth:</span>
+                  <span class="badge badge-success" style="font-size: 11px;">PROTECTED (timingSafeEqual)</span>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>
@@ -288,8 +323,16 @@
               <h2>Managed UID Bypass Keys</h2>
               <p>Search, inspect UID limit counts, toggle active state, or revoke bypass keys.</p>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <input type="text" id="key-search-input" placeholder="Search UID keys or client names..." style="width: 240px;" class="mono-input">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <select id="key-status-filter" class="mono-input" style="width: 130px; font-size: 12px;" onchange="applyKeyFilters()">
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="expired">Expired</option>
+                <option value="limit_full">Limit Full</option>
+              </select>
+              <input type="text" id="key-search-input" placeholder="Search keys, clients, or UIDs..." style="width: 220px;" class="mono-input">
+              <button class="btn btn-secondary btn-sm" onclick="exportKeysCSV()">📥 Export CSV</button>
               <button class="btn btn-secondary btn-sm" onclick="loadKeys()">Refresh</button>
             </div>
           </div>
@@ -302,9 +345,9 @@
                   <th>Bypass Key</th>
                   <th>Status</th>
                   <th>Expires</th>
-                  <th>UIDs Used / Limit</th>
+                  <th style="min-width: 170px;">Quota / Consumed Slots</th>
                   <th>Created</th>
-                  <th>Actions</th>
+                  <th style="min-width: 200px;">Actions</th>
                 </tr>
               </thead>
               <tbody id="keys-table-body">
@@ -422,7 +465,15 @@
               <p>Real-time log of registered UIDs, status, and response latency.</p>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-              <input type="text" id="log-search-input" placeholder="Search by UID, Bypass Key, Client Name, Status..." style="width: 320px;" class="mono-input">
+              <select id="log-status-filter" class="mono-input" style="width: 125px; font-size: 12px;" onchange="applyLogFilters()">
+                <option value="all">All HTTP Codes</option>
+                <option value="200">200 Success</option>
+                <option value="429">429 Limit Hit</option>
+                <option value="403">403 Forbidden</option>
+                <option value="502">502 Upstream Err</option>
+              </select>
+              <input type="text" id="log-search-input" placeholder="Search UID, Key, Client..." style="width: 220px;" class="mono-input">
+              <button class="btn btn-secondary btn-sm" onclick="exportLogsCSV()">📥 Export Logs</button>
               <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Refresh</button>
               <button class="btn btn-danger-outline btn-sm" onclick="clearLogs()">Clear History</button>
             </div>
@@ -515,6 +566,40 @@
           </table>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Edit Key Settings Modal -->
+  <div id="edit-key-modal" class="secret-modal-backdrop hidden" onclick="if(event.target===this) closeEditKeyModal()">
+    <div class="edit-modal-box">
+      <button class="modal-close-btn" onclick="closeEditKeyModal()">✕</button>
+      <h2 style="font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px;">Modify UID Key Settings</h2>
+      <p class="text-dim" style="font-size: 12px; margin-bottom: 16px;">Key: <span class="key-code" id="edit-key-code">--</span></p>
+
+      <form id="edit-key-form" class="form-field" style="gap: 14px;">
+        <input type="hidden" id="edit-key-id">
+
+        <div class="form-field">
+          <label>Client Label / Owner Name</label>
+          <input type="text" id="edit-key-name" required>
+        </div>
+
+        <div class="form-field">
+          <label>UID Limit Quota (Maximum Allowed UIDs)</label>
+          <input type="number" id="edit-key-limit" min="0" placeholder="e.g. 50 (0 = Unlimited)">
+          <small class="text-dim">Slots already consumed will count against this new limit.</small>
+        </div>
+
+        <div class="form-field">
+          <label>Extend Expiry (Add Extra Days)</label>
+          <input type="number" id="edit-key-add-days" min="0" placeholder="e.g. 30 to extend validity">
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeEditKeyModal()">Cancel</button>
+          <button type="submit" class="btn btn-accent btn-sm" id="btn-save-key-edit">Save Changes</button>
+        </div>
+      </form>
     </div>
   </div>
 

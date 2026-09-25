@@ -949,6 +949,59 @@ input:focus, select:focus, textarea:focus {
   max-height: calc(88vh - 160px);
 }
 
+/* Quota Progress Bar for Managed Keys */
+.quota-progress-track {
+  width: 100%;
+  max-width: 140px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.quota-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.fill-green {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.fill-yellow {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.fill-red {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+/* Edit Key Modal */
+.edit-modal-box {
+  background: #0d121c;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.95), 0 0 35px rgba(255, 255, 255, 0.12);
+  width: 100%;
+  max-width: 440px;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  position: relative;
+  text-align: left;
+}
+
+.security-badge-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
 .modal-close-btn {
   position: absolute;
   top: 16px;

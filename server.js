@@ -1,4 +1,8 @@
-require('dotenv').config();
+const initialPort = process.env.PORT;
+require('dotenv').config({ override: true });
+if (initialPort && initialPort !== '3000') {
+  process.env.PORT = initialPort;
+}
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -9,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MASTER_API_URL = process.env.MASTER_API_URL || 'https://mani272uidbypass.vercel.app/api/v1/uids/add';
 const MASTER_REMOVE_URL = process.env.MASTER_REMOVE_URL || MASTER_API_URL.replace('/add', '/remove');
-const MASTER_API_KEY = process.env.MASTER_API_KEY || 'MANI272-F5523A6A44D1FB13C5F8C71A9C4A64BE';
+const MASTER_API_KEY = process.env.MASTER_API_KEY || 'MANI272-6657808A4D2955D7BD5B42C6E03A0F98';
 const DEFAULT_PREFIX = process.env.DEFAULT_PREFIX || 'HOMBRE';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'v9du0njnxw';
 const ADMIN_TOKEN = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest('hex');
@@ -764,6 +768,16 @@ app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, async (req, res) =
     slotsConsumed: foundKey.slotsConsumed,
     uids: foundKey.registeredUidsDetails,
     total: foundKey.registeredUids.length
+  });
+});
+
+// Health Check Endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    service: 'hombre-uid-gateway'
   });
 });
 

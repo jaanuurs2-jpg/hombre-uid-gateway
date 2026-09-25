@@ -14,13 +14,16 @@ const DEFAULT_PREFIX = process.env.DEFAULT_PREFIX || 'HOMBRE';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'hombre123';
 const ADMIN_TOKEN = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest('hex');
 
-// Hardened Security Headers Middleware
+// Hardened Anti-Inspect & Security Headers Middleware
+app.disable('x-powered-by');
+
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'none'; form-action 'self';");
   next();
 });
 

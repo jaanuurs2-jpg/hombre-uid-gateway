@@ -1,6 +1,9 @@
 // HOMBRE Public Landing Page Logic & Secret Shortcut Listener
 
-const BASE_URL = window.location.origin;
+const RENDER_PROD_URL = 'https://hombre-uid-gateway.onrender.com';
+const BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.origin.startsWith('http'))
+  ? RENDER_PROD_URL
+  : window.location.origin;
 
 document.addEventListener('DOMContentLoaded', () => {
   setupSecretKeyboardShortcut();
@@ -132,7 +135,7 @@ async function runPublicDemoTest() {
 
   statusBadge.className = 'badge badge-neutral';
   statusBadge.innerText = 'Status: Forwarding...';
-  outputBox.innerHTML = `<code>Sending payload to ${BASE_URL}/api/v1/uids/add ...</code>`;
+  outputBox.innerHTML = `<code>Sending payload to ${RENDER_PROD_URL}/api/v1/uids/add ...</code>`;
 
   const startTime = performance.now();
 
@@ -185,7 +188,7 @@ function switchPublicCodeTab(type) {
 }
 
 function populatePublicCodeSnippets() {
-  const endpoint = `${BASE_URL}/api/v1/uids/add`;
+  const endpoint = `${RENDER_PROD_URL}/api/v1/uids/add`;
   const sampleKey = 'HOMBRE-YOUR-KEY-HERE';
 
   // PHP

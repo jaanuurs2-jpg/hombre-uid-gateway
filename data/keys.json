@@ -1,18 +1,1 @@
-[
-  {
-    "id": "181402da-b153-414d-9d1a-a337039ea2cc",
-    "key": "HOMBRE-09B18D3E2698107EAE23D613A355027A",
-    "name": "VIP Squad Lead Pro",
-    "prefix": "HOMBRE",
-    "createdAt": "2026-09-25T11:10:06.814Z",
-    "expiresAt": "2026-10-25T11:10:06.814Z",
-    "days": 30,
-    "uidLimit": 50,
-    "maxCalls": 50,
-    "registeredUids": [],
-    "uidsCount": 0,
-    "usageCount": 0,
-    "isActive": true,
-    "lastUsedAt": null
-  }
-]
+[]

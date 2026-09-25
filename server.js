@@ -856,13 +856,16 @@ app.delete('/api/admin/logs', requireAdminAuth, (req, res) => {
 });
 
 // Start Server
+const RENDER_PROD_URL = process.env.RENDER_EXTERNAL_URL || 'https://hombre-uid-gateway.onrender.com';
+
 app.listen(PORT, () => {
   console.log(`===============================================`);
-  console.log(`👑 HOMBRE API Gateway running on port ${PORT}`);
-  console.log(`🌐 Public Landing Page: http://localhost:${PORT}`);
-  console.log(`🛡️ Admin Portal: http://localhost:${PORT}/admin (Locked: Ctrl+Shift+V)`);
-  console.log(`📡 Public Proxy Endpoint: POST http://localhost:${PORT}/api/v1/uids/add`);
-  console.log(`🎯 Upstream Target: ${MASTER_API_URL}`);
-  console.log(`🔑 Admin Pass: ${ADMIN_PASSWORD}`);
+  console.log(`👑 HOMBRE UID Gateway running on port ${PORT}`);
+  console.log(`🌐 Public Landing Page: ${RENDER_PROD_URL}`);
+  console.log(`🛡️ Admin Portal: ${RENDER_PROD_URL}/admin (Locked: Ctrl+Shift+V)`);
+  console.log(`📡 Public Proxy Endpoint: POST ${RENDER_PROD_URL}/api/v1/uids/add`);
+  console.log(`🎯 Upstream Target: AIR-GAPPED & SECURED (Backend Only)`);
+  console.log(`🔑 Admin Authentication: Active`);
   console.log(`===============================================`);
 });
+

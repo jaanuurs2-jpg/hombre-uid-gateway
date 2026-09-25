@@ -1,7 +1,10 @@
 // HOMBRE Admin Panel Controller
 
-let currentKeys = [];
-const BASE_URL = window.location.origin;
+const RENDER_PROD_URL = 'https://hombre-uid-gateway.onrender.com';
+const BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.origin.startsWith('http'))
+  ? RENDER_PROD_URL
+  : window.location.origin;
+
 
 function getAdminToken() {
   return sessionStorage.getItem('hombre_admin_token') || localStorage.getItem('hombre_admin_token');
@@ -120,7 +123,7 @@ function adminLogout() {
 function updatePublicUrlDisplay() {
   const el = document.getElementById('display-public-url');
   if (el) {
-    el.value = `${window.location.origin}/api/v1/uids/add`;
+    el.value = `${RENDER_PROD_URL}/api/v1/uids/add`;
   }
 }
 
@@ -494,7 +497,7 @@ async function runLiveTest() {
   btn.innerText = '⏳ Forwarding to Master API...';
   statusBadge.className = 'badge badge-neutral';
   statusBadge.innerText = 'Status: Sending...';
-  jsonBox.innerHTML = `<code>Sending request to ${BASE_URL}/api/v1/uids/add ...</code>`;
+  jsonBox.innerHTML = `<code>Sending request to ${RENDER_PROD_URL}/api/v1/uids/add ...</code>`;
 
   const startTime = performance.now();
 
@@ -555,7 +558,7 @@ function switchCodeTab(type) {
 function updateCodeSnippets() {
   const docsSelect = document.getElementById('docs-key-select');
   const selectedKey = (docsSelect && docsSelect.value) ? docsSelect.value : 'HOMBRE-YOUR-KEY-HERE';
-  const endpoint = `${BASE_URL}/api/v1/uids/add`;
+  const endpoint = `${RENDER_PROD_URL}/api/v1/uids/add`;
 
   const phpCode = `<?php
 $ch = curl_init('${endpoint}');

@@ -929,6 +929,53 @@ app.get('/api/v1/uids/:uid', checkApiRateLimit, (req, res) => {
   });
 });
 
+// GET /api/v1/quota, /api/v1/limit, /api/v1/key/info for checking API Key quota limits
+function handleQuotaCheck(req, res) {
+  let clientKey = req.headers['x-auth-key'] ||
+                  req.headers['x-api-key'] ||
+                  req.headers['authorization'] ||
+                  req.query.key ||
+                  req.query.auth_key;
+
+  if (clientKey && typeof clientKey === 'string' && clientKey.startsWith('Bearer ')) {
+    clientKey = clientKey.slice(7).trim();
+  }
+
+  if (!clientKey) {
+    return res.status(401).json({ success: false, error: 'Unauthorized: X-AUTH-KEY is required' });
+  }
+
+  const keys = readJSON(KEYS_FILE, []);
+  const foundKey = keys.find(k => k.key.trim() === String(clientKey).trim());
+  if (!foundKey) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Invalid API Key' });
+  }
+
+  const effectiveLimit = foundKey.uidLimit !== undefined ? foundKey.uidLimit : (foundKey.maxCalls || 0);
+  const slotsUsed = foundKey.slotsConsumed !== undefined ? foundKey.slotsConsumed : (foundKey.registeredUids ? foundKey.registeredUids.length : 0);
+  const remaining = effectiveLimit > 0 ? Math.max(0, effectiveLimit - slotsUsed) : -1;
+  const activeUids = foundKey.registeredUids ? foundKey.registeredUids.length : 0;
+
+  return res.json({
+    success: true,
+    key: foundKey.key,
+    name: foundKey.name || 'Unnamed',
+    isActive: !!foundKey.isActive,
+    limit: effectiveLimit,
+    used: slotsUsed,
+    remaining: remaining,
+    activeUids: activeUids,
+    usageCount: foundKey.usageCount || 0,
+    days: foundKey.days || 30,
+    expiresAt: foundKey.expiresAt,
+    createdAt: foundKey.createdAt
+  });
+}
+
+app.get('/api/v1/quota', checkApiRateLimit, handleQuotaCheck);
+app.get('/api/v1/limit', checkApiRateLimit, handleQuotaCheck);
+app.get('/api/v1/key/info', checkApiRateLimit, handleQuotaCheck);
+
 // ==========================================
 // 2. ADMIN AUTHENTICATION (Brute-Force Protected & Timing Safe)
 // ==========================================

@@ -45,6 +45,13 @@ function checkLoginRateLimit(req, res, next) {
 
   if (record && record.lockedUntil && now < record.lockedUntil) {
     const remainingSeconds = Math.ceil((record.lockedUntil - now) / 1000);
+    addAdminAudit({
+      eventType: 'SECURITY_LOCKOUT',
+      level: 'SECURITY',
+      action: `Admin login blocked: IP temporarily locked out (${remainingSeconds}s remaining)`,
+      details: { remainingSeconds, lockDuration: '10m' },
+      req
+    });
     return res.status(429).json({
       success: false,
       error: `Security Lockout: Too many failed login attempts. Try again in ${remainingSeconds} seconds.`
@@ -60,6 +67,13 @@ function recordFailedLogin(ip) {
   if (record.count >= 5) {
     record.lockedUntil = now + 10 * 60 * 1000; // 10 minutes lockout
     record.count = 0;
+    addAdminAudit({
+      eventType: 'SECURITY_LOCKOUT',
+      level: 'SECURITY',
+      action: `IP locked out for 10 minutes due to 5 consecutive failed login attempts`,
+      details: { ip, threshold: 5 },
+      ip
+    });
   }
   failedLoginAttempts.set(ip, record);
 }
@@ -102,10 +116,12 @@ if (!fs.existsSync(DATA_DIR)) {
 const KEYS_FILE = path.join(DATA_DIR, 'keys.json');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.json');
 const KEYS_BACKUP_FILE = path.join(DATA_DIR, 'keys.backup.json');
+const ADMIN_AUDIT_FILE = path.join(DATA_DIR, 'admin-audit.json');
 
 // In-Memory Master Store with Atomic Sync & Backup Recovery
 let memoryKeys = [];
 let memoryLogs = [];
+let memoryAdminAudit = [];
 
 function loadDataFromDisk() {
   try {
@@ -141,6 +157,15 @@ function loadDataFromDisk() {
   } catch (err) {
     console.error('Initial logs read error:', err);
   }
+
+  try {
+    if (fs.existsSync(ADMIN_AUDIT_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(ADMIN_AUDIT_FILE, 'utf8'));
+      if (Array.isArray(parsed)) memoryAdminAudit = parsed;
+    }
+  } catch (err) {
+    console.error('Initial admin audit read error:', err);
+  }
 }
 loadDataFromDisk();
 
@@ -151,6 +176,9 @@ function readJSON(file, defaultVal) {
   }
   if (file === LOGS_FILE) {
     return memoryLogs;
+  }
+  if (file === ADMIN_AUDIT_FILE) {
+    return memoryAdminAudit;
   }
   try {
     if (fs.existsSync(file)) {
@@ -191,6 +219,18 @@ function writeJSON(file, data) {
     return;
   }
 
+  if (file === ADMIN_AUDIT_FILE) {
+    memoryAdminAudit = Array.isArray(data) ? data : [];
+    try {
+      const tempFile = `${ADMIN_AUDIT_FILE}.tmp`;
+      fs.writeFileSync(tempFile, JSON.stringify(memoryAdminAudit, null, 2), 'utf8');
+      fs.renameSync(tempFile, ADMIN_AUDIT_FILE);
+    } catch (err) {
+      console.error(`Error writing ${ADMIN_AUDIT_FILE}:`, err);
+    }
+    return;
+  }
+
   try {
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch (err) {
@@ -208,6 +248,33 @@ function addLog(logEntry) {
   // Keep last 300 logs
   if (logs.length > 300) logs.pop();
   writeJSON(LOGS_FILE, logs);
+}
+
+// Immutable Admin Security Audit Logger (Permanent & Non-Clearable)
+function addAdminAudit({ eventType, action, details = {}, req, ip, userAgent, level = 'INFO' }) {
+  const clientIp = req
+    ? (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown')
+    : (ip || 'unknown');
+  const agent = req
+    ? (req.headers['user-agent'] || 'unknown')
+    : (userAgent || 'Console');
+
+  const auditEntry = {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    eventType: eventType || 'ADMIN_ACTION',
+    level: level, // SUCCESS, INFO, NOTICE, WARNING, SECURITY
+    action: action || 'Admin Action',
+    details: details || {},
+    ip: clientIp,
+    userAgent: agent
+  };
+
+  memoryAdminAudit.unshift(auditEntry);
+  // Retain up to 3000 permanent audit logs
+  if (memoryAdminAudit.length > 3000) memoryAdminAudit.pop();
+  writeJSON(ADMIN_AUDIT_FILE, memoryAdminAudit);
+  return auditEntry;
 }
 
 // Timing-Safe Admin Auth Middleware
@@ -234,6 +301,13 @@ function requireAdminAuth(req, res, next) {
 
 // Route to serve Admin HTML directly at /admin
 app.get('/admin', (req, res) => {
+  addAdminAudit({
+    eventType: 'PAGE_VIEW',
+    level: 'INFO',
+    action: 'Admin Console accessed (/admin)',
+    details: { path: '/admin' },
+    req
+  });
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
@@ -719,6 +793,13 @@ app.post('/api/admin/login', checkLoginRateLimit, (req, res) => {
 
   if (!password) {
     recordFailedLogin(ip);
+    addAdminAudit({
+      eventType: 'LOGIN_FAILED',
+      level: 'WARNING',
+      action: 'Admin login rejected: Empty password provided',
+      details: {},
+      req
+    });
     return res.status(400).json({ success: false, error: 'Password is required' });
   }
 
@@ -727,6 +808,13 @@ app.post('/api/admin/login', checkLoginRateLimit, (req, res) => {
 
   if (passBuffer.length === adminPassBuffer.length && crypto.timingSafeEqual(passBuffer, adminPassBuffer)) {
     clearFailedLogin(ip);
+    addAdminAudit({
+      eventType: 'ADMIN_LOGIN',
+      level: 'SUCCESS',
+      action: 'Admin successfully logged in to Admin Vault',
+      details: { authMethod: 'Password Token' },
+      req
+    });
     return res.json({
       success: true,
       message: 'Access Granted! Welcome to HOMBRE Admin Vault.',
@@ -735,6 +823,13 @@ app.post('/api/admin/login', checkLoginRateLimit, (req, res) => {
   }
 
   recordFailedLogin(ip);
+  addAdminAudit({
+    eventType: 'LOGIN_FAILED',
+    level: 'WARNING',
+    action: 'Failed admin login attempt: Incorrect password entered',
+    details: { enteredLength: String(password).length },
+    req
+  });
   return res.status(401).json({
     success: false,
     error: 'Incorrect Password. Access Denied.'
@@ -922,6 +1017,14 @@ app.post('/api/admin/keys/:id/uids', requireAdminAuth, async (req, res) => {
     durationMs: 0
   });
 
+  addAdminAudit({
+    eventType: 'UID_MANUALLY_ADDED',
+    level: 'NOTICE',
+    action: `Admin manually registered UID ${cleanUid} to key: ${foundKey.key} ("${foundKey.name}")`,
+    details: { uid: cleanUid, name: newDetail.name, days: newDetail.days, key: foundKey.key, keyName: foundKey.name },
+    req
+  });
+
   return res.json({
     success: true,
     message: `UID ${cleanUid} successfully added to key!`,
@@ -1002,6 +1105,14 @@ app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, async (req, res) =
     error: `UID Removed from both APIs (Slot remains consumed: ${foundKey.slotsConsumed}/${foundKey.uidLimit || 'unlimited'})`,
     ip: adminIp,
     durationMs: 0
+  });
+
+  addAdminAudit({
+    eventType: 'UID_MANUALLY_REMOVED',
+    level: 'WARNING',
+    action: `Admin manually revoked UID ${cleanUid} from key: ${foundKey.key} ("${foundKey.name}")`,
+    details: { uid: cleanUid, key: foundKey.key, upstreamRemoved, message: upstreamMsg },
+    req
   });
 
   return res.json({
@@ -1090,6 +1201,14 @@ app.post('/api/admin/keys', requireAdminAuth, (req, res) => {
   keys.unshift(newKey);
   writeJSON(KEYS_FILE, keys);
 
+  addAdminAudit({
+    eventType: 'KEY_CREATED',
+    level: 'NOTICE',
+    action: `Created API Key: ${newKey.key} ("${newKey.name}")`,
+    details: { key: newKey.key, name: newKey.name, prefix: chosenPrefix, limit: finalLimit, days: durationDays },
+    req
+  });
+
   res.status(201).json({
     success: true,
     message: 'HOMBRE API Key successfully created!',
@@ -1129,6 +1248,15 @@ app.patch('/api/admin/keys/:id', requireAdminAuth, (req, res) => {
   }
 
   writeJSON(KEYS_FILE, keys);
+
+  addAdminAudit({
+    eventType: 'KEY_MODIFIED',
+    level: 'NOTICE',
+    action: `Modified key settings: ${keyObj.key} ("${keyObj.name}")`,
+    details: { key: keyObj.key, name: keyObj.name, limit: keyObj.uidLimit, days: keyObj.days },
+    req
+  });
+
   res.json({
     success: true,
     message: 'Key updated successfully!',
@@ -1149,6 +1277,14 @@ app.patch('/api/admin/keys/:id/toggle', requireAdminAuth, (req, res) => {
   keyObj.isActive = !keyObj.isActive;
   writeJSON(KEYS_FILE, keys);
 
+  addAdminAudit({
+    eventType: 'KEY_TOGGLED',
+    level: 'NOTICE',
+    action: `${keyObj.isActive ? 'Activated' : 'Paused'} API Key: ${keyObj.key} ("${keyObj.name}")`,
+    details: { key: keyObj.key, name: keyObj.name, isActive: keyObj.isActive },
+    req
+  });
+
   res.json({
     success: true,
     message: `Key is now ${keyObj.isActive ? 'Active' : 'Paused'}`,
@@ -1160,27 +1296,104 @@ app.patch('/api/admin/keys/:id/toggle', requireAdminAuth, (req, res) => {
 app.delete('/api/admin/keys/:id', requireAdminAuth, (req, res) => {
   const { id } = req.params;
   let keys = readJSON(KEYS_FILE, []);
-  const initialLength = keys.length;
-  keys = keys.filter(k => k.id !== id);
+  const targetKey = keys.find(k => k.id === id);
 
-  if (keys.length === initialLength) {
+  if (!targetKey) {
     return res.status(404).json({ success: false, error: 'Key not found' });
   }
 
+  keys = keys.filter(k => k.id !== id);
   writeJSON(KEYS_FILE, keys);
+
+  addAdminAudit({
+    eventType: 'KEY_DELETED',
+    level: 'WARNING',
+    action: `Permanently deleted API Key: ${targetKey.key} ("${targetKey.name}")`,
+    details: { key: targetKey.key, name: targetKey.name },
+    req
+  });
+
   res.json({ success: true, message: 'Key deleted successfully' });
 });
 
-// Get Logs
+// Get Request Logs
 app.get('/api/admin/logs', requireAdminAuth, (req, res) => {
   const logs = readJSON(LOGS_FILE, []);
   res.json(logs.slice(0, 50));
 });
 
-// Clear Logs
+// Clear Request Logs (Standard API traffic only)
 app.delete('/api/admin/logs', requireAdminAuth, (req, res) => {
+  const logs = readJSON(LOGS_FILE, []);
   writeJSON(LOGS_FILE, []);
+
+  addAdminAudit({
+    eventType: 'API_LOGS_CLEARED',
+    level: 'WARNING',
+    action: `Cleared API Request Traffic Logs (${logs.length} records removed)`,
+    details: { previousLogCount: logs.length },
+    req
+  });
+
   res.json({ success: true, message: 'Logs cleared' });
+});
+
+// ==========================================
+// 4. PERMANENT IMMUTABLE ADMIN AUDIT LOGS
+// ==========================================
+
+// Get Admin Audit Logs (Strictly protected by Admin Token)
+app.get('/api/admin/audit-logs', requireAdminAuth, (req, res) => {
+  const auditLogs = readJSON(ADMIN_AUDIT_FILE, []);
+  res.json({
+    success: true,
+    immutable: true,
+    total: auditLogs.length,
+    logs: auditLogs.slice(0, 300)
+  });
+});
+
+// Record Admin Console Section Visit (With Debouncing)
+const lastAdminVisits = new Map(); // ip -> { section, timestamp }
+
+app.post('/api/admin/audit/visit', requireAdminAuth, (req, res) => {
+  const { section, title } = req.body || {};
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+
+  const prev = lastAdminVisits.get(ip);
+  if (prev && prev.section === section && now - prev.timestamp < 3000) {
+    return res.json({ success: true, debounced: true });
+  }
+
+  lastAdminVisits.set(ip, { section, timestamp: now });
+
+  const sectionName = title || (section ? String(section).replace('tab-', '').toUpperCase() : 'Console');
+  addAdminAudit({
+    eventType: 'CONSOLE_VISIT',
+    level: 'INFO',
+    action: `Admin visited console section: ${sectionName}`,
+    details: { section, title: sectionName },
+    req
+  });
+
+  res.json({ success: true });
+});
+
+// Explicit Immutability Enforcer: Reject any attempt to clear or delete admin audit logs
+app.delete('/api/admin/audit-logs', requireAdminAuth, (req, res) => {
+  addAdminAudit({
+    eventType: 'TAMPER_BLOCKED',
+    level: 'SECURITY',
+    action: 'BLOCKED: Unauthorized attempt to delete permanent Admin Audit Logs',
+    details: { policy: 'WORM (Write Once, Read Many) - Immutability Enforced' },
+    req
+  });
+
+  res.status(403).json({
+    success: false,
+    error: 'Security Policy Violation: Admin audit logs are permanent and immutable (WORM storage). Deletion is strictly prohibited.'
+  });
 });
 
 // Start Server

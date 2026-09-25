@@ -53,7 +53,9 @@ async function checkAuthAndInitialize() {
       loadStats();
       loadKeys();
       loadLogs();
+      loadAuditLogs();
       updatePublicUrlDisplay();
+      reportAdminVisit('tab-dashboard', 'Console Opened / Dashboard Overview');
 
       const searchInput = document.getElementById('key-search-input');
       if (searchInput) {
@@ -148,6 +150,18 @@ function switchToTab(tabId) {
   if (tabId === 'tab-logs') loadLogs();
   if (tabId === 'tab-keys') loadKeys();
   if (tabId === 'tab-docs') updateCodeSnippets();
+  if (tabId === 'tab-audit-logs') loadAuditLogs();
+
+  const tabTitles = {
+    'tab-dashboard': 'Overview Dashboard',
+    'tab-generator': 'UID Key Generator',
+    'tab-keys': 'Managed UID Keys Table',
+    'tab-tester': 'UID Test Sandbox',
+    'tab-docs': 'Client Code Snippets',
+    'tab-logs': 'UID Request Traffic Logs',
+    'tab-audit-logs': 'Security Audit Trail'
+  };
+  reportAdminVisit(tabId, tabTitles[tabId] || tabId);
 }
 
 // Tab Navigation
@@ -842,6 +856,175 @@ async function clearLogs() {
     loadStats();
   } catch (err) {
     console.error('Failed to clear logs:', err);
+  }
+}
+
+// ==========================================
+// IMMUTABLE ADMIN SECURITY AUDIT LOGS
+// ==========================================
+let currentAuditLogs = [];
+
+async function loadAuditLogs() {
+  const tbody = document.getElementById('audit-logs-table-body');
+  try {
+    const res = await fetch('/api/admin/audit-logs', {
+      headers: { 'x-admin-token': getAdminToken() }
+    });
+    if (!res.ok) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Failed to load admin audit logs (Status: ${res.status}).</td></tr>`;
+      return;
+    }
+    const data = await res.json();
+    currentAuditLogs = data.logs || [];
+    updateAuditMetrics(currentAuditLogs);
+    renderAuditLogsTable(currentAuditLogs);
+  } catch (err) {
+    console.error('Failed to load admin audit logs:', err);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger">Error loading audit logs: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function updateAuditMetrics(logs) {
+  const totalEl = document.getElementById('audit-stat-total');
+  const loginsEl = document.getElementById('audit-stat-logins');
+  const alertsEl = document.getElementById('audit-stat-alerts');
+
+  if (totalEl) totalEl.innerText = logs.length;
+  if (loginsEl) loginsEl.innerText = logs.filter(l => l.eventType === 'ADMIN_LOGIN').length;
+  if (alertsEl) alertsEl.innerText = logs.filter(l => l.level === 'WARNING' || l.level === 'SECURITY' || l.eventType === 'LOGIN_FAILED' || l.eventType === 'SECURITY_LOCKOUT').length;
+}
+
+function filterAuditLogs() {
+  const searchInput = document.getElementById('audit-search-input');
+  const catFilter = document.getElementById('audit-category-filter');
+  const q = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const cat = catFilter ? catFilter.value : 'ALL';
+
+  let filtered = currentAuditLogs;
+
+  if (cat !== 'ALL') {
+    if (cat === 'LOGINS') {
+      filtered = filtered.filter(l => l.eventType === 'ADMIN_LOGIN' || l.eventType === 'LOGIN_FAILED' || l.eventType === 'SECURITY_LOCKOUT');
+    } else if (cat === 'VISITS') {
+      filtered = filtered.filter(l => l.eventType === 'CONSOLE_VISIT' || l.eventType === 'PAGE_VIEW');
+    } else if (cat === 'KEYS') {
+      filtered = filtered.filter(l => l.eventType.startsWith('KEY_'));
+    } else if (cat === 'UIDS') {
+      filtered = filtered.filter(l => l.eventType.startsWith('UID_'));
+    }
+  }
+
+  if (q) {
+    filtered = filtered.filter(l =>
+      (l.action && l.action.toLowerCase().includes(q)) ||
+      (l.eventType && l.eventType.toLowerCase().includes(q)) ||
+      (l.ip && l.ip.toLowerCase().includes(q)) ||
+      (JSON.stringify(l.details || {}).toLowerCase().includes(q))
+    );
+  }
+
+  renderAuditLogsTable(filtered);
+}
+
+function renderAuditLogsTable(logs) {
+  const tbody = document.getElementById('audit-logs-table-body');
+  if (!tbody) return;
+
+  if (logs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">No admin audit logs match your filter.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = logs.map(l => {
+    const d = new Date(l.timestamp);
+    const dateStr = d.toLocaleDateString();
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+    let agoStr = '';
+    if (diffSec < 60) agoStr = 'Just now';
+    else if (diffSec < 3600) agoStr = `${Math.floor(diffSec / 60)}m ago`;
+    else if (diffSec < 86400) agoStr = `${Math.floor(diffSec / 3600)}h ago`;
+    else agoStr = `${Math.floor(diffSec / 86400)}d ago`;
+
+    // Event Badge Styling
+    let badgeClass = 'badge badge-subtle';
+    if (l.eventType === 'ADMIN_LOGIN') badgeClass = 'badge badge-success';
+    else if (l.eventType === 'LOGIN_FAILED') badgeClass = 'badge badge-danger';
+    else if (l.eventType === 'SECURITY_LOCKOUT' || l.level === 'SECURITY' || l.eventType === 'TAMPER_BLOCKED') badgeClass = 'badge badge-danger';
+    else if (l.eventType === 'KEY_CREATED') badgeClass = 'badge badge-cyan';
+    else if (l.eventType === 'KEY_MODIFIED' || l.eventType === 'KEY_TOGGLED') badgeClass = 'badge badge-warning';
+    else if (l.eventType === 'KEY_DELETED' || l.eventType === 'UID_MANUALLY_REMOVED') badgeClass = 'badge badge-danger';
+    else if (l.eventType === 'UID_MANUALLY_ADDED') badgeClass = 'badge badge-success';
+    else if (l.eventType === 'CONSOLE_VISIT') badgeClass = 'badge badge-subtle';
+
+    // Format Details cleanly
+    let detailsHtml = '';
+    if (l.details && Object.keys(l.details).length > 0) {
+      detailsHtml = Object.entries(l.details)
+        .map(([k, v]) => `<span style="display:inline-block; margin-right:8px; font-size:11px; background:rgba(255,255,255,0.03); padding:2px 6px; border-radius:4px;"><strong style="color:var(--text-muted);">${escapeHtml(k)}:</strong> <span style="color:var(--accent-silver-dim);">${escapeHtml(String(v))}</span></span>`)
+        .join('');
+    } else {
+      detailsHtml = '<span class="text-dim" style="font-size:11px;">—</span>';
+    }
+
+    return `
+      <tr>
+        <td style="white-space: nowrap;">
+          <div style="font-weight: 500; font-size: 13px;">${timeStr}</div>
+          <div class="text-dim" style="font-size: 11px;">${dateStr} (${agoStr})</div>
+        </td>
+        <td><span class="${badgeClass}">${escapeHtml(l.eventType)}</span></td>
+        <td>
+          <div style="font-weight: 500; color: var(--accent-silver); font-size: 13px;">${escapeHtml(l.action)}</div>
+        </td>
+        <td>${detailsHtml}</td>
+        <td style="white-space: nowrap;">
+          <div><code style="font-size: 11px;">${escapeHtml(l.ip || 'unknown')}</code></div>
+          <small class="text-dim" style="font-size: 10px; display: block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(l.userAgent || '')}">
+            ${escapeHtml(l.userAgent || 'Console Session')}
+          </small>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function exportAdminAuditCSV() {
+  if (!currentAuditLogs || currentAuditLogs.length === 0) {
+    showToast('No audit logs to export');
+    return;
+  }
+  const headers = ['Timestamp', 'Event Type', 'Severity', 'Action Description', 'IP Address', 'User Agent', 'Details JSON'];
+  const rows = currentAuditLogs.map(l => [
+    new Date(l.timestamp).toISOString(),
+    `"${l.eventType || ''}"`,
+    `"${l.level || 'INFO'}"`,
+    `"${(l.action || '').replace(/"/g, '""')}"`,
+    `"${l.ip || ''}"`,
+    `"${(l.userAgent || '').replace(/"/g, '""')}"`,
+    `"${JSON.stringify(l.details || {}).replace(/"/g, '""')}"`
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  downloadBlob(csvContent, 'hombre-admin-audit-logs.csv', 'text/csv');
+  showToast('Admin Audit Logs exported to CSV! 📥');
+  reportAdminVisit('audit-export', 'Exported Admin Security Audit Logs to CSV');
+}
+
+async function reportAdminVisit(sectionId, title) {
+  const token = getAdminToken();
+  if (!token) return;
+  try {
+    await fetch('/api/admin/audit/visit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': token
+      },
+      body: JSON.stringify({ section: sectionId, title: title || sectionId })
+    });
+  } catch (err) {
+    // silent
   }
 }
 

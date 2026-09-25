@@ -1,0 +1,41 @@
+[
+  {
+    "id": "d1e2436e-ffe7-408c-8723-4dfd4deb620f",
+    "timestamp": "2026-09-25T09:40:40.469Z",
+    "endpoint": "/api/v1/uids/add",
+    "key": "HOMBRE-8579C6C11C0EF317B00A017B5968AA52",
+    "clientName": "2-UID-Client",
+    "uid": "10003",
+    "status": 429,
+    "success": false,
+    "error": "UID Limit Exceeded (2/2 UIDs used)",
+    "ip": "::1",
+    "durationMs": 0
+  },
+  {
+    "id": "91cac167-0123-4e67-96be-f78e4255d926",
+    "timestamp": "2026-09-25T09:40:40.463Z",
+    "endpoint": "/api/v1/uids/add",
+    "key": "HOMBRE-8579C6C11C0EF317B00A017B5968AA52",
+    "clientName": "2-UID-Client",
+    "uid": "10002",
+    "status": 502,
+    "success": false,
+    "error": "fetch failed",
+    "ip": "::1",
+    "durationMs": 10492
+  },
+  {
+    "id": "6ddbb4c0-8136-41b8-8ce8-8fef0762cc86",
+    "timestamp": "2026-09-25T09:40:29.966Z",
+    "endpoint": "/api/v1/uids/add",
+    "key": "HOMBRE-8579C6C11C0EF317B00A017B5968AA52",
+    "clientName": "2-UID-Client",
+    "uid": "10001",
+    "status": 502,
+    "success": false,
+    "error": "fetch failed",
+    "ip": "::1",
+    "durationMs": 10532
+  }
+]

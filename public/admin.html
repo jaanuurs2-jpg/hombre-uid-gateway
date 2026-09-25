@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HOMBRE Admin Vault — UID Bypass Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-body">
+
+  <!-- Scroll Progress Indicator -->
+  <div id="scroll-progress"></div>
+
+  <!-- Ambient Animated Waves in Black & Silver -->
+  <canvas id="waves-canvas"></canvas>
+  <div class="ambient-mesh"></div>
+  <div class="ambient-grid"></div>
+
+  <!-- AUTH CHECK LOCK SCREEN -->
+  <div id="auth-lock-screen" class="auth-lock-screen hidden">
+    <div class="lock-card spotlight-card">
+      <div class="secret-icon-wrap" style="margin: 0 auto 16px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h2 style="font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 6px;">HOMBRE UID Vault</h2>
+      <p class="text-dim" style="font-size: 13px; margin-bottom: 20px;">Session authentication required.</p>
+      
+      <form id="vault-direct-login" class="form-field">
+        <input type="password" id="vault-direct-pass" class="mono-input" placeholder="Enter Admin Password..." required autofocus>
+        <button type="submit" class="btn btn-accent w-100 mt-3 shimmer-btn">Unlock Console</button>
+      </form>
+      <p class="text-dim text-center mt-3"><a href="/" class="nav-link" style="font-size: 12px;">← Return to Public Site</a></p>
+    </div>
+  </div>
+
+  <!-- MAIN ADMIN CONSOLE -->
+  <div class="app-container" id="admin-main-container">
+    
+    <!-- Admin Navbar -->
+    <header class="admin-navbar">
+      <div class="brand">
+        <div class="brand-icon-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-name">
+          HOMBRE <span>/ UID Admin Vault</span>
+        </div>
+      </div>
+
+      <div class="admin-nav-actions">
+        <div class="badge badge-success">
+          <span class="pulse-dot"></span>
+          <span>UPSTREAM CONNECTED</span>
+        </div>
+        <a href="/" class="btn btn-secondary btn-sm">Public Site</a>
+        <button class="btn btn-danger-outline btn-sm" onclick="adminLogout()">Disconnect</button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="admin-tabs">
+      <button class="tab-btn active" data-tab="tab-dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="tab-generator">UID Key Generator</button>
+      <button class="tab-btn" data-tab="tab-keys">Managed UID Keys</button>
+      <button class="tab-btn" data-tab="tab-tester">UID Test Sandbox</button>
+      <button class="tab-btn" data-tab="tab-docs">Client Snippets</button>
+      <button class="tab-btn" data-tab="tab-logs">UID Request Logs</button>
+    </nav>
+
+    <!-- Main Content -->
+    <main>
+
+      <!-- ================= TAB: DASHBOARD ================= -->
+      <section id="tab-dashboard" class="tab-content active">
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card spotlight-card interactive-card">
+            <div class="stat-header">
+              <span class="stat-title">Issued UID Keys</span>
+              <span class="badge badge-subtle">Total</span>
+            </div>
+            <div class="stat-value" id="stat-total-keys">0</div>
+            <div class="stat-desc">Cryptographically generated UID keys</div>
+          </div>
+
+          <div class="stat-card spotlight-card interactive-card">
+            <div class="stat-header">
+              <span class="stat-title">Active UID Keys</span>
+              <span class="badge badge-success">Valid</span>
+            </div>
+            <div class="stat-value" style="color: var(--accent-emerald);" id="stat-active-keys">0</div>
+            <div class="stat-desc">Currently active bypass keys</div>
+          </div>
+
+          <div class="stat-card spotlight-card interactive-card">
+            <div class="stat-header">
+              <span class="stat-title">UIDs Processed</span>
+              <span class="badge badge-subtle">Forwarded</span>
+            </div>
+            <div class="stat-value" style="color: #ffffff;" id="stat-total-requests">0</div>
+            <div class="stat-desc">Relayed to master bypass upstream</div>
+          </div>
+
+          <div class="stat-card spotlight-card interactive-card">
+            <div class="stat-header">
+              <span class="stat-title">Success Rate</span>
+              <span class="badge badge-subtle">Health</span>
+            </div>
+            <div class="stat-value" id="stat-success-rate">100%</div>
+            <div class="stat-desc">Zero forwarding degradation</div>
+          </div>
+        </div>
+
+        <!-- 2-Column Dashboard Layout -->
+        <div class="admin-grid-2col">
+          <!-- Fast Generator -->
+          <div class="panel-card spotlight-card interactive-card">
+            <div class="panel-head">
+              <div>
+                <h2>Quick UID Key Generator</h2>
+                <p>Generate an active UID bypass key with limit instantly.</p>
+              </div>
+              <span class="badge badge-subtle">INSTANT KEY</span>
+            </div>
+
+            <form id="quick-gen-form" class="form-field" style="gap: 14px;">
+              <div class="form-field">
+                <label>Client Label / Owner</label>
+                <input type="text" id="quick-name" placeholder="e.g. Squad Lead Alex, VIP 01" required>
+              </div>
+
+              <div class="form-field-row">
+                <div class="form-field flex-1">
+                  <label>Prefix Namespace</label>
+                  <input type="text" id="quick-prefix" value="HOMBRE" required>
+                </div>
+                <div class="form-field flex-1">
+                  <label>Duration</label>
+                  <select id="quick-days">
+                    <option value="7">7 Days (Weekly)</option>
+                    <option value="30" selected>30 Days (Monthly)</option>
+                    <option value="90">90 Days (Quarterly)</option>
+                    <option value="365">1 Year (Annual)</option>
+                    <option value="0">Lifetime (No Expiry)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label>UID Limit (Maximum Allowed UIDs)</label>
+                <input type="number" id="quick-max-calls" placeholder="e.g. 10 (0 = Unlimited UIDs)" min="0" value="10">
+                <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickUidLimit(5)">5 UIDs</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickUidLimit(10)">10 UIDs</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickUidLimit(25)">25 UIDs</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickUidLimit(50)">50 UIDs</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="setQuickUidLimit(0)">Unlimited</button>
+                </div>
+                <small class="text-dim">After this many UIDs are registered, the API stops responding to further UIDs.</small>
+              </div>
+
+              <button type="submit" class="btn btn-accent w-100 mt-2">
+                Generate HOMBRE Key
+              </button>
+            </form>
+          </div>
+
+          <!-- Gateway Architecture Specs -->
+          <div class="panel-card">
+            <div class="panel-head">
+              <div>
+                <h2>Gateway Routing Target</h2>
+                <p>Public entry point and air-gapped upstream binding.</p>
+              </div>
+              <span class="badge badge-success">AIR-GAPPED</span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 14px; font-size: 13px;">
+              <div class="form-field">
+                <label>Your Public Gateway Endpoint</label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="display-public-url" class="mono-input" readonly value="http://localhost:3000/api/v1/uids/add">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('display-public-url')">Copy</button>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label>Upstream Target (Server-Side Only)</label>
+                <input type="text" class="mono-input" readonly value="https://mani272uidbypass.vercel.app/api/v1/uids/add" style="color: var(--text-tertiary);">
+              </div>
+
+              <div class="form-field">
+                <label>Master Upstream Key</label>
+                <div class="badge badge-warning" style="align-self: flex-start;">LOCKED IN SERVER ENVIRONMENT (.ENV)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: GENERATOR ================= -->
+      <section id="tab-generator" class="tab-content">
+        <div class="panel-card max-w-700">
+          <div class="panel-head">
+            <div>
+              <h2>Granular UID Key Provisioning</h2>
+              <p>Configure client names, validity durations, and strict UID limits.</p>
+            </div>
+          </div>
+
+          <form id="full-gen-form" class="form-field" style="gap: 16px;">
+            <div class="form-field">
+              <label>Client Label / Identifier</label>
+              <input type="text" id="gen-name" placeholder="e.g. Reseller Pack #1, Internal Squad" required>
+            </div>
+
+            <div class="form-field-row">
+              <div class="form-field flex-1">
+                <label>Prefix Namespace</label>
+                <input type="text" id="gen-prefix" value="HOMBRE" placeholder="HOMBRE">
+              </div>
+
+              <div class="form-field flex-1">
+                <label>Active Duration</label>
+                <select id="gen-days">
+                  <option value="7">7 Days (Weekly)</option>
+                  <option value="15">15 Days (Bi-Weekly)</option>
+                  <option value="30" selected>30 Days (Monthly VIP)</option>
+                  <option value="60">60 Days</option>
+                  <option value="90">90 Days (Quarterly)</option>
+                  <option value="365">365 Days (Annual)</option>
+                  <option value="0">Lifetime (No Expiry)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label>UID Limit (Maximum Allowed UIDs)</label>
+              <input type="number" id="gen-max-calls" placeholder="e.g. 10 (0 = Unlimited UIDs)" min="0" value="10">
+              <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="setFullUidLimit(5)">5 UIDs</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="setFullUidLimit(10)">10 UIDs</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="setFullUidLimit(25)">25 UIDs</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="setFullUidLimit(50)">50 UIDs</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="setFullUidLimit(0)">Unlimited</button>
+              </div>
+              <small class="text-dim">Set how many UIDs this key can register. After reaching the limit, the API stops responding.</small>
+            </div>
+
+            <div class="form-field">
+              <label>Custom Key String (Optional)</label>
+              <input type="text" id="gen-custom-key" class="mono-input" placeholder="Leave empty for cryptographically random hex">
+            </div>
+
+            <button type="submit" class="btn btn-accent w-100 mt-2">
+              Provision UID Key Now
+            </button>
+          </form>
+
+          <div id="gen-result-box" class="hidden mt-4" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-sm); padding: 16px;">
+            <div style="font-size: 13px; font-weight: 600; color: #34d399; margin-bottom: 6px;">UID Key Generated Successfully</div>
+            <p class="text-dim" style="font-size: 12px; margin-bottom: 10px;">Bypass key is live and ready for immediate client use:</p>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="result-key-text" class="mono-input" readonly>
+              <button class="btn btn-secondary btn-sm" onclick="copyResultKey()">Copy Key</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: MANAGED KEYS ================= -->
+      <section id="tab-keys" class="tab-content">
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>Managed UID Bypass Keys</h2>
+              <p>Search, inspect UID limit counts, toggle active state, or revoke bypass keys.</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="key-search-input" placeholder="Search UID keys or client names..." style="width: 240px;" class="mono-input">
+              <button class="btn btn-secondary btn-sm" onclick="loadKeys()">Refresh</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Client Label</th>
+                  <th>Bypass Key</th>
+                  <th>Status</th>
+                  <th>Expires</th>
+                  <th>UIDs Used / Limit</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="keys-table-body">
+                <tr>
+                  <td colspan="7" class="text-center text-muted">Loading UID keys...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: TESTER ================= -->
+      <section id="tab-tester" class="tab-content">
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>Live UID Bypass Test Console</h2>
+              <p>Test live UID addition with any active HOMBRE bypass key.</p>
+            </div>
+          </div>
+
+          <div class="admin-grid-2col">
+            <div class="form-field" style="gap: 14px;">
+              <div class="form-field">
+                <label>Select HOMBRE Bypass Key</label>
+                <select id="test-key-select" class="mono-input">
+                  <option value="">Loading keys...</option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label>Target Game UID</label>
+                <input type="text" id="test-uid" class="mono-input" value="123456789">
+              </div>
+
+              <div class="form-field-row">
+                <div class="form-field flex-1">
+                  <label>Days Parameter</label>
+                  <input type="number" id="test-days" class="mono-input" value="30">
+                </div>
+                <div class="form-field flex-1">
+                  <label>Name Tag</label>
+                  <input type="text" id="test-name" value="TestUser">
+                </div>
+              </div>
+
+              <button type="button" id="btn-run-test" class="btn btn-accent w-100 mt-2" onclick="runLiveTest()">
+                Send UID Bypass Request
+              </button>
+            </div>
+
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <label>Server Response</label>
+                <div style="display: flex; gap: 6px;">
+                  <span class="badge badge-subtle" id="response-status">Status: Waiting</span>
+                  <span class="badge badge-subtle" id="response-time">Latency: --</span>
+                </div>
+              </div>
+              <pre class="code-viewer" id="response-json-box"><code>// Click "Send UID Bypass Request" to test UID addition...</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: CODE SNIPPETS ================= -->
+      <section id="tab-docs" class="tab-content">
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>Client Integration Handout (UID Bypass)</h2>
+              <p>Ready-to-use code snippets for PHP, Python, JavaScript, and cURL.</p>
+            </div>
+            <div>
+              <select id="docs-key-select" class="mono-input" onchange="updateCodeSnippets()">
+                <option value="HOMBRE-SAMPLE-KEY">Select bypass key...</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="code-panel">
+            <div class="code-tabs-header">
+              <div class="code-tabs-list">
+                <button class="code-tab-item active" onclick="switchCodeTab('php')">PHP</button>
+                <button class="code-tab-item" onclick="switchCodeTab('python')">Python</button>
+                <button class="code-tab-item" onclick="switchCodeTab('js')">Node / Fetch</button>
+                <button class="code-tab-item" onclick="switchCodeTab('curl')">cURL</button>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="copySnippet('code-php')">Copy</button>
+            </div>
+
+            <div id="snippet-php" class="code-box-display active">
+              <pre><code id="code-php"></code></pre>
+            </div>
+            <div id="snippet-python" class="code-box-display hidden">
+              <pre><code id="code-python"></code></pre>
+            </div>
+            <div id="snippet-js" class="code-box-display hidden">
+              <pre><code id="code-js"></code></pre>
+            </div>
+            <div id="snippet-curl" class="code-box-display hidden">
+              <pre><code id="code-curl"></code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB: LOGS ================= -->
+      <section id="tab-logs" class="tab-content">
+        <div class="panel-card">
+          <div class="panel-head">
+            <div>
+              <h2>UID Bypass Request Logs</h2>
+              <p>Real-time log of registered UIDs, status, and response latency.</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Refresh</button>
+              <button class="btn btn-danger-outline btn-sm" onclick="clearLogs()">Clear History</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Bypass Key</th>
+                  <th>Client Name</th>
+                  <th>Target UID</th>
+                  <th>Status</th>
+                  <th>Latency</th>
+                  <th>Caller IP</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table-body">
+                <tr>
+                  <td colspan="7" class="text-center text-muted">No UID request records logged yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="landing-footer" style="margin-top: 48px;">
+      <div class="footer-inner">
+        <span>HOMBRE UID Bypass Console • Protected Session Runtime</span>
+        <span class="text-dim">Environment: Production</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden">
+    <span id="toast-msg">Copied</span>
+  </div>
+
+  <script src="waves.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

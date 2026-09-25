@@ -1,0 +1,22 @@
+{
+  "name": "hombre-uid-gateway",
+  "version": "1.0.0",
+  "description": "High-Performance UID Bypass API Gateway & Auth Proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "uid-bypass",
+    "gateway",
+    "reverse-proxy"
+  ],
+  "author": "AMAN",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1"
+  }
+}

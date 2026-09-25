@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: hombre-uid-gateway
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MASTER_API_URL
+        value: https://mani272uidbypass.vercel.app/api/v1/uids/add
+      - key: MASTER_API_KEY
+        value: MANI272-F5523A6A44D1FB13C5F8C71A9C4A64BE
+      - key: DEFAULT_PREFIX
+        value: HOMBRE
+      - key: ADMIN_PASSWORD
+        value: hombre123

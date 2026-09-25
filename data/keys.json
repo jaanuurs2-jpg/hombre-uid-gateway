@@ -1,0 +1,20 @@
+[
+  {
+    "id": "3642cbdb-7cd1-4df1-9029-727c4f310398",
+    "key": "HOMBRE-4C0038EB4E4A5E6B5EE4536B4B28B465",
+    "name": "axc",
+    "prefix": "HOMBRE",
+    "createdAt": "2026-09-25T08:47:07.317Z",
+    "expiresAt": "2026-10-25T08:47:07.317Z",
+    "days": 30,
+    "uidLimit": 0,
+    "maxCalls": 0,
+    "registeredUids": [
+      "123456789"
+    ],
+    "uidsCount": 1,
+    "usageCount": 2,
+    "isActive": true,
+    "lastUsedAt": "2026-09-25T08:48:06.189Z"
+  }
+]

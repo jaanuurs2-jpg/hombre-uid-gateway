@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#040711" />
+      <stop offset="50%" stop-color="#080e1c" />
+      <stop offset="100%" stop-color="#020408" />
+    </linearGradient>
+
+    <!-- Cyber Border Gradient -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+
+    <!-- Neon Cyan to Emerald Gradient -->
+    <linearGradient id="neonCyan" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+
+    <linearGradient id="neonEmerald" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#67e8f9" />
+      <stop offset="50%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Base Dark Squircle -->
+  <rect x="20" y="20" width="472" height="472" rx="108" fill="url(#bgGrad)" stroke="url(#borderGrad)" stroke-width="8" />
+
+  <!-- Inner Ambient Glow Circle -->
+  <circle cx="256" cy="256" r="150" fill="#38bdf8" opacity="0.06" filter="url(#neonGlow)" />
+
+  <!-- Cyber Crosshair / Grid Accents -->
+  <g opacity="0.25" stroke="#38bdf8" stroke-width="2">
+    <line x1="256" y1="44" x2="256" y2="74" />
+    <line x1="256" y1="438" x2="256" y2="468" />
+    <line x1="44" y1="256" x2="74" y2="256" />
+    <line x1="438" y1="256" x2="468" y2="256" />
+  </g>
+
+  <!-- Top & Bottom Shield Chevrons -->
+  <path d="M 216 88 L 256 60 L 296 88 L 284 100 L 256 80 L 228 100 Z" fill="url(#coreGrad)" filter="url(#subtleGlow)" />
+  <path d="M 216 424 L 256 452 L 296 424 L 284 412 L 256 432 L 228 412 Z" fill="url(#coreGrad)" filter="url(#subtleGlow)" />
+
+  <!-- Main "H" Gateway Architecture -->
+  <!-- Left Pillar -->
+  <path d="M 130 130 C 130 120, 138 114, 148 114 L 180 114 C 188 114, 194 120, 194 128 L 194 384 C 194 392, 188 398, 180 398 L 148 398 C 138 398, 130 392, 130 382 Z"
+        fill="url(#neonCyan)" filter="url(#subtleGlow)" />
+  <!-- Left Pillar Accent Highlight -->
+  <path d="M 142 134 L 152 134 L 152 378 L 142 378 Z" fill="#ffffff" opacity="0.45" />
+
+  <!-- Right Pillar -->
+  <path d="M 318 114 L 350 114 C 360 114, 368 120, 368 130 L 368 382 C 368 392, 360 398, 350 398 L 318 398 C 310 398, 304 392, 304 384 L 304 128 C 304 120, 310 114, 318 114 Z"
+        fill="url(#neonEmerald)" filter="url(#subtleGlow)" />
+  <!-- Right Pillar Accent Highlight -->
+  <path d="M 360 134 L 350 134 L 350 378 L 360 378 Z" fill="#ffffff" opacity="0.45" />
+
+  <!-- Central Bridge / Gateway Nexus -->
+  <path d="M 194 232 L 304 232 L 304 280 L 194 280 Z" fill="url(#bgGrad)" stroke="url(#coreGrad)" stroke-width="5" />
+
+  <!-- Glowing Cyber Core / Central Diamond -->
+  <g filter="url(#neonGlow)">
+    <polygon points="256,196 304,256 256,316 208,256" fill="url(#coreGrad)" />
+    <polygon points="256,220 286,256 256,292 226,256" fill="#ffffff" opacity="0.9" />
+  </g>
+
+  <!-- Corner Tech Indicators -->
+  <circle cx="80" cy="80" r="4" fill="#38bdf8" opacity="0.8" />
+  <circle cx="432" cy="80" r="4" fill="#10b981" opacity="0.8" />
+  <circle cx="80" cy="432" r="4" fill="#38bdf8" opacity="0.8" />
+  <circle cx="432" cy="432" r="4" fill="#10b981" opacity="0.8" />
+</svg>

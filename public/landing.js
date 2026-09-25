@@ -15,14 +15,46 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==========================================
-// SECRET KEYBOARD SHORTCUT: Ctrl + Shift + V
+// SECRET COMMAND LISTENER:
+// 1. Hotkeys: Ctrl + Shift + V or Ctrl + Shift + A
+// 2. Secret typed command: Type "admin" or "vault" anywhere on page
 // ==========================================
 function setupSecretKeyboardShortcut() {
+  let typedBuffer = '';
+  let clearTimer = null;
+
   document.addEventListener('keydown', (e) => {
-    // Detect Ctrl + Shift + V (case-insensitive)
-    if (e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v' || e.keyCode === 86)) {
+    // Escape key closes modal
+    if (e.key === 'Escape') {
+      closeAdminModal();
+      return;
+    }
+
+    // 1. Hotkeys: Ctrl + Shift + V / Ctrl + Shift + A (Mac: Cmd + Shift + V / Cmd + Shift + A)
+    const isModifier = e.ctrlKey || e.metaKey;
+    if (isModifier && e.shiftKey && (e.key === 'V' || e.key === 'v' || e.key === 'A' || e.key === 'a' || e.keyCode === 86 || e.keyCode === 65)) {
       e.preventDefault();
       openAdminModal();
+      return;
+    }
+
+    // Don't capture typed characters if typing in an input
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
+      return;
+    }
+
+    // 2. Secret word typing: "admin", "vault", "hombre"
+    if (e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      typedBuffer += e.key.toLowerCase();
+      if (typedBuffer.length > 20) typedBuffer = typedBuffer.slice(-20);
+
+      clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => { typedBuffer = ''; }, 3000);
+
+      if (typedBuffer.endsWith('admin') || typedBuffer.endsWith('vault') || typedBuffer.endsWith('hombre')) {
+        typedBuffer = '';
+        openAdminModal();
+      }
     }
   });
 }

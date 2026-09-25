@@ -467,6 +467,250 @@ app.post('/api/v1/uids/add', checkApiRateLimit, async (req, res) => {
 });
 
 // ==========================================
+// 1.1 CLIENT REVERSE PROXY REMOVE / DELETE ENDPOINT
+// Clients and Discord/Telegram Bots call this with their HOMBRE-... key!
+// Supports POST /api/v1/uids/remove, DELETE /api/v1/uids/remove, and POST /api/v1/uids/delete
+// ==========================================
+async function handleClientUidRemove(req, res) {
+  const startTime = Date.now();
+
+  // Extract key from headers, body, or query
+  let clientKey = req.headers['x-auth-key'] ||
+                  req.headers['x-api-key'] ||
+                  req.headers['authorization'] ||
+                  (req.body && (req.body.key || req.body.api_key)) ||
+                  req.query.key ||
+                  req.query.auth_key;
+
+  if (clientKey && typeof clientKey === 'string' && clientKey.startsWith('Bearer ')) {
+    clientKey = clientKey.slice(7).trim();
+  }
+
+  const uid = (req.body && (req.body.uid || req.body.account_id || req.body.identifier)) || req.query.uid;
+  const reason = (req.body && req.body.reason) || req.query.reason || '';
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+
+  // Key Validation
+  if (!clientKey) {
+    addLog({
+      endpoint: '/api/v1/uids/remove',
+      key: 'MISSING',
+      clientName: 'Unknown',
+      uid: uid || 'N/A',
+      status: 401,
+      success: false,
+      error: 'Missing X-AUTH-KEY header',
+      ip: clientIp,
+      durationMs: Date.now() - startTime
+    });
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: X-AUTH-KEY header or api_key parameter is required'
+    });
+  }
+
+  const keys = readJSON(KEYS_FILE, []);
+  const foundKey = keys.find(k => k.key.trim() === String(clientKey).trim());
+
+  if (!foundKey) {
+    addLog({
+      endpoint: '/api/v1/uids/remove',
+      key: clientKey,
+      clientName: 'Unknown',
+      uid: uid || 'N/A',
+      status: 403,
+      success: false,
+      error: 'Invalid API Key',
+      ip: clientIp,
+      durationMs: Date.now() - startTime
+    });
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: Invalid API Key provided'
+    });
+  }
+
+  // Check if Active
+  if (!foundKey.isActive) {
+    addLog({
+      endpoint: '/api/v1/uids/remove',
+      key: clientKey,
+      clientName: foundKey.name,
+      uid: uid || 'N/A',
+      status: 403,
+      success: false,
+      error: 'Key Deactivated',
+      ip: clientIp,
+      durationMs: Date.now() - startTime
+    });
+    return res.status(403).json({
+      success: false,
+      error: 'Forbidden: API Key has been suspended or deactivated'
+    });
+  }
+
+  // Check Expiry
+  if (foundKey.expiresAt) {
+    const expiryTime = new Date(foundKey.expiresAt).getTime();
+    if (Date.now() > expiryTime) {
+      addLog({
+        endpoint: '/api/v1/uids/remove',
+        key: clientKey,
+        clientName: foundKey.name,
+        uid: uid || 'N/A',
+        status: 403,
+        success: false,
+        error: 'Key Expired',
+        ip: clientIp,
+        durationMs: Date.now() - startTime
+      });
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: API Key has expired'
+      });
+    }
+  }
+
+  // UID Validation
+  if (!uid) {
+    return res.status(400).json({
+      success: false,
+      error: 'Bad Request: "uid" parameter is required'
+    });
+  }
+
+  const cleanUid = String(uid).trim();
+
+  // Remove UID from local key tracking if present
+  if (!foundKey.registeredUids) foundKey.registeredUids = [];
+  if (!foundKey.registeredUidsDetails) foundKey.registeredUidsDetails = [];
+
+  foundKey.registeredUids = foundKey.registeredUids.filter(u => String(u).trim() !== cleanUid);
+  foundKey.registeredUidsDetails = foundKey.registeredUidsDetails.filter(d => String(d.uid).trim() !== cleanUid);
+  foundKey.uidsCount = foundKey.registeredUids.length;
+  foundKey.usageCount = (foundKey.usageCount || 0) + 1;
+  foundKey.lastUsedAt = new Date().toISOString();
+  writeJSON(KEYS_FILE, keys);
+
+  // Relay removal to Upstream Master API (POST https://mani272uidbypass.vercel.app/api/v1/uids/remove)
+  try {
+    const upstreamResponse = await fetch(MASTER_REMOVE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-AUTH-KEY': MASTER_API_KEY
+      },
+      body: JSON.stringify({
+        uid: cleanUid,
+        account_id: cleanUid,
+        identifier: cleanUid,
+        reason: reason
+      })
+    });
+
+    const responseStatus = upstreamResponse.status;
+    const responseText = await upstreamResponse.text();
+
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      responseData = { message: responseText };
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    addLog({
+      endpoint: '/api/v1/uids/remove',
+      key: clientKey,
+      clientName: foundKey.name,
+      uid: cleanUid,
+      status: responseStatus,
+      success: upstreamResponse.ok,
+      ip: clientIp,
+      durationMs: durationMs
+    });
+
+    return res.status(responseStatus).json(responseData);
+  } catch (err) {
+    console.error('Error forwarding remove to upstream:', err);
+    const durationMs = Date.now() - startTime;
+    addLog({
+      endpoint: '/api/v1/uids/remove',
+      key: clientKey,
+      clientName: foundKey.name,
+      uid: cleanUid,
+      status: 502,
+      success: false,
+      error: 'Upstream gateway unreachable during remove',
+      ip: clientIp,
+      durationMs: durationMs
+    });
+    return res.status(502).json({
+      success: false,
+      error: 'Bad Gateway: Upstream provider is temporarily unreachable',
+      details: err.message
+    });
+  }
+}
+
+app.post('/api/v1/uids/remove', checkApiRateLimit, handleClientUidRemove);
+app.delete('/api/v1/uids/remove', checkApiRateLimit, handleClientUidRemove);
+app.post('/api/v1/uids/delete', checkApiRateLimit, handleClientUidRemove);
+
+// GET /api/v1/uids/:uid for checking UID status under the caller's key
+app.get('/api/v1/uids/:uid', checkApiRateLimit, (req, res) => {
+  const { uid } = req.params;
+  let clientKey = req.headers['x-auth-key'] ||
+                  req.headers['x-api-key'] ||
+                  req.headers['authorization'] ||
+                  req.query.key ||
+                  req.query.auth_key;
+
+  if (clientKey && typeof clientKey === 'string' && clientKey.startsWith('Bearer ')) {
+    clientKey = clientKey.slice(7).trim();
+  }
+
+  if (!clientKey) {
+    return res.status(401).json({ success: false, error: 'Unauthorized: X-AUTH-KEY is required' });
+  }
+
+  const keys = readJSON(KEYS_FILE, []);
+  const foundKey = keys.find(k => k.key.trim() === String(clientKey).trim());
+  if (!foundKey) {
+    return res.status(403).json({ success: false, error: 'Forbidden: Invalid API Key' });
+  }
+
+  const cleanUid = String(uid).trim();
+  const detail = (foundKey.registeredUidsDetails || []).find(d => String(d.uid).trim() === cleanUid);
+
+  if (detail) {
+    return res.json({
+      success: true,
+      exists: true,
+      status: 'active',
+      uid: cleanUid,
+      data: detail
+    });
+  }
+
+  if ((foundKey.registeredUids || []).includes(cleanUid)) {
+    return res.json({
+      success: true,
+      exists: true,
+      status: 'active',
+      uid: cleanUid
+    });
+  }
+
+  return res.status(404).json({
+    success: false,
+    exists: false,
+    error: `UID ${cleanUid} not found under this key`
+  });
+});
+
+// ==========================================
 // 2. ADMIN AUTHENTICATION (Brute-Force Protected & Timing Safe)
 // ==========================================
 app.post('/api/admin/login', checkLoginRateLimit, (req, res) => {

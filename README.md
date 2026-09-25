@@ -27,13 +27,15 @@ Click the button below to instantly deploy your instance on Render with free SSL
 ## 🌐 Live Production Deployment
 - **Web Interface & Landing**: `https://hombre-uid-gateway.onrender.com`
 - **Admin Vault (Locked: Ctrl+Shift+V)**: `https://hombre-uid-gateway.onrender.com/admin`
-- **Proxy Endpoint**: `POST https://hombre-uid-gateway.onrender.com/api/v1/uids/add`
+- **Proxy Add Endpoint**: `POST https://hombre-uid-gateway.onrender.com/api/v1/uids/add`
+- **Proxy Remove Endpoint**: `POST https://hombre-uid-gateway.onrender.com/api/v1/uids/remove`
+- **Status Check Endpoint**: `GET https://hombre-uid-gateway.onrender.com/api/v1/uids/:uid`
 
 ---
 
 ## 📡 API Usage
 
-### Forwarding Endpoint
+### 1. Whitelist / Add UID Endpoint
 `POST https://hombre-uid-gateway.onrender.com/api/v1/uids/add`
 
 #### Headers
@@ -60,6 +62,44 @@ When a key exceeds its allocated UID limit, the gateway immediately returns:
   "limit": 10,
   "used": 10
 }
+```
+
+---
+
+### 2. Purge / Remove UID Endpoint
+`POST https://hombre-uid-gateway.onrender.com/api/v1/uids/remove`
+*(Also supports `DELETE /api/v1/uids/remove` and `POST /api/v1/uids/delete`)*
+
+#### Headers
+```http
+Content-Type: application/json
+X-AUTH-KEY: HOMBRE-XXXX-XXXX-XXXX
+```
+
+#### Request Body
+```json
+{
+  "uid": "123456789"
+}
+```
+
+#### Response
+```json
+{
+  "success": true,
+  "message": "UID 123456789 has been removed successfully",
+  "gtcStatus": "Account ID '123456789' removed successfully."
+}
+```
+
+---
+
+### 3. Check UID Status Endpoint
+`GET https://hombre-uid-gateway.onrender.com/api/v1/uids/:uid`
+
+#### Headers
+```http
+X-AUTH-KEY: HOMBRE-XXXX-XXXX-XXXX
 ```
 
 ---

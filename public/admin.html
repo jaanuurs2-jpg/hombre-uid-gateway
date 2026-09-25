@@ -478,6 +478,16 @@
         </div>
       </div>
 
+      <!-- Manual Add UID Section -->
+      <form id="modal-add-uid-form" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); align-items: center;">
+        <input type="text" id="modal-add-uid" placeholder="Game UID (e.g. 100234567)" class="mono-input" style="flex: 2; min-width: 140px;" required>
+        <input type="text" id="modal-add-name" placeholder="Name Tag (e.g. VIP User)" style="flex: 1.5; min-width: 120px;">
+        <input type="number" id="modal-add-days" placeholder="Days" value="30" class="mono-input" style="width: 75px;">
+        <button type="submit" class="btn btn-accent btn-sm" id="btn-modal-add-uid" style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 14px;">
+          <span>➕ Add UID</span>
+        </button>
+      </form>
+
       <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center;">
         <input type="text" id="modal-search-input" placeholder="Filter UIDs or names in this key..." class="mono-input" style="flex: 1;" oninput="filterModalUids(this.value)">
         <span class="badge badge-success" id="modal-uids-count">0 UIDs</span>
@@ -494,7 +504,7 @@
                 <th>Days</th>
                 <th>Added Date & Time</th>
                 <th>Caller IP</th>
-                <th style="width: 70px;">Action</th>
+                <th style="width: 130px; text-align: right;">Actions</th>
               </tr>
             </thead>
             <tbody id="modal-uids-table-body">

@@ -488,6 +488,155 @@ app.get('/api/admin/keys/:id/uids', requireAdminAuth, (req, res) => {
   });
 });
 
+// Admin Manually Add a UID to a Key (and relay to master upstream)
+app.post('/api/admin/keys/:id/uids', requireAdminAuth, async (req, res) => {
+  const { id } = req.params;
+  const { uid, name, days } = req.body || {};
+  const adminIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'admin-console';
+
+  if (!uid || !String(uid).trim()) {
+    return res.status(400).json({ success: false, error: 'Target Game UID is required' });
+  }
+
+  const cleanUid = String(uid).trim();
+  const keys = readJSON(KEYS_FILE, []);
+  const foundKey = keys.find(k => k.id === id);
+
+  if (!foundKey) {
+    return res.status(404).json({ success: false, error: 'Key not found' });
+  }
+
+  if (!foundKey.registeredUids) foundKey.registeredUids = [];
+  if (!foundKey.registeredUidsDetails) foundKey.registeredUidsDetails = [];
+
+  // Check if UID already registered on this key
+  const alreadyExists = foundKey.registeredUids.includes(cleanUid);
+  if (alreadyExists) {
+    return res.status(400).json({
+      success: false,
+      error: `UID ${cleanUid} is already registered under this key!`
+    });
+  }
+
+  // Relay to Upstream Master API with Master Key
+  let upstreamSuccess = false;
+  let upstreamMessage = 'Saved locally';
+  try {
+    const upstreamRes = await fetch(MASTER_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-AUTH-KEY': MASTER_API_KEY
+      },
+      body: JSON.stringify({
+        uid: cleanUid,
+        days: days ? parseInt(days, 10) : 30,
+        name: (name && String(name).trim()) ? String(name).trim() : 'AdminAdded'
+      })
+    });
+    upstreamSuccess = upstreamRes.ok;
+    const upstreamText = await upstreamRes.text();
+    try {
+      const upJson = JSON.parse(upstreamText);
+      upstreamMessage = upJson.message || upJson.msg || (upstreamRes.ok ? 'Forwarded to upstream' : 'Upstream error');
+    } catch {
+      upstreamMessage = upstreamRes.ok ? 'Forwarded to upstream' : upstreamText;
+    }
+  } catch (err) {
+    console.warn('Admin add UID upstream forward notice:', err.message);
+    upstreamMessage = `Saved to key (upstream notice: ${err.message})`;
+  }
+
+  // Add to key details
+  const newDetail = {
+    uid: cleanUid,
+    name: (name && String(name).trim()) ? String(name).trim() : 'Admin Added',
+    days: days ? parseInt(days, 10) : 30,
+    addedAt: new Date().toISOString(),
+    ip: adminIp + ' (Admin)'
+  };
+
+  foundKey.registeredUids.push(cleanUid);
+  foundKey.registeredUidsDetails.unshift(newDetail);
+  foundKey.uidsCount = foundKey.registeredUids.length;
+  foundKey.usageCount = (foundKey.usageCount || 0) + 1;
+  foundKey.lastUsedAt = new Date().toISOString();
+  writeJSON(KEYS_FILE, keys);
+
+  addLog({
+    endpoint: '/api/admin/keys/:id/uids',
+    key: foundKey.key,
+    clientName: foundKey.name,
+    uid: cleanUid,
+    nameTag: newDetail.name,
+    days: newDetail.days,
+    status: upstreamSuccess ? 200 : 201,
+    success: true,
+    error: 'Added manually by Admin',
+    ip: adminIp,
+    durationMs: 0
+  });
+
+  return res.json({
+    success: true,
+    message: `UID ${cleanUid} successfully added to key!`,
+    upstreamMessage,
+    uids: foundKey.registeredUidsDetails,
+    total: foundKey.registeredUids.length
+  });
+});
+
+// Admin Remove / Delete a UID from a Key
+app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, (req, res) => {
+  const { id, uid } = req.params;
+  const adminIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'admin-console';
+
+  if (!uid) {
+    return res.status(400).json({ success: false, error: 'UID parameter required' });
+  }
+
+  const cleanUid = String(uid).trim();
+  const keys = readJSON(KEYS_FILE, []);
+  const foundKey = keys.find(k => k.id === id);
+
+  if (!foundKey) {
+    return res.status(404).json({ success: false, error: 'Key not found' });
+  }
+
+  if (!foundKey.registeredUids) foundKey.registeredUids = [];
+  if (!foundKey.registeredUidsDetails) foundKey.registeredUidsDetails = [];
+
+  const initialCount = foundKey.registeredUids.length;
+  foundKey.registeredUids = foundKey.registeredUids.filter(u => String(u).trim() !== cleanUid);
+  foundKey.registeredUidsDetails = foundKey.registeredUidsDetails.filter(d => String(d.uid).trim() !== cleanUid);
+
+  if (foundKey.registeredUids.length === initialCount) {
+    return res.status(404).json({ success: false, error: `UID ${cleanUid} was not found in this key` });
+  }
+
+  foundKey.uidsCount = foundKey.registeredUids.length;
+  writeJSON(KEYS_FILE, keys);
+
+  addLog({
+    endpoint: '/api/admin/keys/:id/uids/delete',
+    key: foundKey.key,
+    clientName: foundKey.name,
+    uid: cleanUid,
+    status: 200,
+    success: true,
+    error: 'UID Removed by Admin (Slot Freed)',
+    ip: adminIp,
+    durationMs: 0
+  });
+
+  return res.json({
+    success: true,
+    message: `UID ${cleanUid} successfully removed! 1 slot freed up.`,
+    uids: foundKey.registeredUidsDetails,
+    total: foundKey.registeredUids.length
+  });
+});
+
 // Public Stats (Sanitized for Landing Page)
 app.get('/api/public/stats', (req, res) => {
   const keys = readJSON(KEYS_FILE, []);

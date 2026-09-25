@@ -20,6 +20,7 @@ function clearAdminToken() {
 document.addEventListener('DOMContentLoaded', async () => {
   setupDirectLoginForm();
   setupAdminAnimations();
+  setupModalAddUidForm();
   await checkAuthAndInitialize();
 });
 
@@ -322,7 +323,8 @@ function renderKeysTable(keys) {
       ? `<span style="font-family: var(--font-mono); font-size: 12px; ${isLimitFull ? 'color: var(--accent-rose); font-weight: 700;' : ''}"><strong>${uidsUsed}</strong> / ${effectiveLimit} UIDs</span>`
       : `<span style="font-family: var(--font-mono); font-size: 12px;"><strong>${uidsUsed}</strong> (Unlimited)</span>`;
 
-    const viewUidsBtn = `<button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px;" onclick="openKeyUidsModal('${k.id}')">👁️ View UIDs (${uidsUsed})</button>`;
+    const viewUidsBtn = `<button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" onclick="openKeyUidsModal('${k.id}')">👁️ View (${uidsUsed})</button>`;
+    const addUidBtn = `<button type="button" class="btn btn-accent btn-sm" style="padding: 2px 7px; font-size: 11px; display: inline-flex; align-items: center; gap: 2px;" onclick="openKeyUidsModal('${k.id}', true)">➕ Add UID</button>`;
 
     return `
       <tr>
@@ -331,9 +333,12 @@ function renderKeysTable(keys) {
         <td>${statusBadge}</td>
         <td>${expiryStr}</td>
         <td>
-          <div style="display: flex; flex-direction: column; align-items: flex-start;">
+          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 4px;">
             ${quotaStr}
-            ${viewUidsBtn}
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              ${viewUidsBtn}
+              ${addUidBtn}
+            </div>
           </div>
         </td>
         <td>${createdStr}</td>
@@ -618,9 +623,99 @@ async function clearLogs() {
 // ==========================================
 // UID INSPECTION AUDIT MODAL (Per-Key UIDs)
 // ==========================================
+let currentModalKeyId = null;
 let currentModalUids = [];
 
-async function openKeyUidsModal(keyId) {
+function setupModalAddUidForm() {
+  const form = document.getElementById('modal-add-uid-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentModalKeyId) {
+      alert('Please select or open a key first.');
+      return;
+    }
+
+    const uidInput = document.getElementById('modal-add-uid');
+    const nameInput = document.getElementById('modal-add-name');
+    const daysInput = document.getElementById('modal-add-days');
+    const btn = document.getElementById('btn-modal-add-uid');
+
+    const uid = uidInput ? uidInput.value.trim() : '';
+    const name = nameInput ? nameInput.value.trim() : '';
+    const days = daysInput ? parseInt(daysInput.value, 10) || 30 : 30;
+
+    if (!uid) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳ Adding...</span>';
+
+    try {
+      const res = await fetch(`/api/admin/keys/${currentModalKeyId}/uids`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': getAdminToken()
+        },
+        body: JSON.stringify({ uid, name, days })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || `UID ${uid} added! ✅`);
+        if (uidInput) uidInput.value = '';
+        if (nameInput) nameInput.value = '';
+        currentModalUids = data.uids || [];
+        renderModalUidsTable(currentModalUids);
+        const countEl = document.getElementById('modal-uids-count');
+        if (countEl) countEl.innerText = `${currentModalUids.length} UIDs`;
+        loadKeys();
+        loadStats();
+      } else {
+        alert(data.error || 'Failed to add UID');
+      }
+    } catch (err) {
+      alert('Network error while adding UID');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span>➕ Add UID</span>';
+    }
+  });
+}
+
+async function removeUidFromKey(uid) {
+  if (!currentModalKeyId || !uid) return;
+
+  if (!confirm(`Are you sure you want to remove UID "${uid}" from this key?\n\nThis will remove the UID and immediately free up 1 slot in the key's quota.`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/admin/keys/${currentModalKeyId}/uids/${encodeURIComponent(uid)}`, {
+      method: 'DELETE',
+      headers: { 'x-admin-token': getAdminToken() }
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`UID ${uid} removed! Slot freed 🗑️`);
+      currentModalUids = data.uids || [];
+      renderModalUidsTable(currentModalUids);
+      const countEl = document.getElementById('modal-uids-count');
+      if (countEl) countEl.innerText = `${currentModalUids.length} UIDs`;
+      loadKeys();
+      loadStats();
+    } else {
+      alert(data.error || 'Failed to remove UID');
+    }
+  } catch (err) {
+    alert('Network error while removing UID');
+  }
+}
+
+async function openKeyUidsModal(keyId, focusAdd = false) {
+  currentModalKeyId = keyId;
   const modal = document.getElementById('key-uids-modal');
   const titleEl = document.getElementById('modal-key-title');
   const subtitleEl = document.getElementById('modal-key-code');
@@ -631,6 +726,13 @@ async function openKeyUidsModal(keyId) {
   if (searchInput) searchInput.value = '';
   if (modal) modal.classList.remove('hidden');
   if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Loading registered UIDs...</td></tr>`;
+
+  if (focusAdd) {
+    setTimeout(() => {
+      const addInput = document.getElementById('modal-add-uid');
+      if (addInput) addInput.focus();
+    }, 150);
+  }
 
   try {
     const res = await fetch(`/api/admin/keys/${keyId}/uids`, {
@@ -673,8 +775,11 @@ function renderModalUidsTable(uids) {
         <td><span class="badge badge-subtle">${item.days || 30} Days</span></td>
         <td style="font-size: 12px; color: var(--text-secondary);">${dateStr}</td>
         <td><small class="text-muted">${escapeHtml(item.ip || 'N/A')}</small></td>
-        <td>
-          <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;" onclick="copyPlain('${escapeHtml(item.uid)}')">Copy</button>
+        <td style="text-align: right;">
+          <div style="display: inline-flex; gap: 5px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 7px; font-size: 11px;" title="Copy UID" onclick="copyPlain('${escapeHtml(item.uid)}')">📋</button>
+            <button type="button" class="btn btn-danger-outline btn-sm" style="padding: 2px 7px; font-size: 11px;" title="Remove UID & Free Slot" onclick="removeUidFromKey('${escapeHtml(item.uid)}')">🗑️</button>
+          </div>
         </td>
       </tr>
     `;

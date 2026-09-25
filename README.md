@@ -26,7 +26,7 @@ Click the button below to instantly deploy your instance on Render with free SSL
 
 ## 🌐 Live Production Deployment
 - **Web Interface & Landing**: `https://hombre-uid-gateway.onrender.com`
-- **Admin Vault (Locked: Ctrl+Shift+V)**: `https://hombre-uid-gateway.onrender.com/admin`
+- **Admin Vault (Locked: Ctrl+Alt+V)**: `https://hombre-uid-gateway.onrender.com/admin`
 - **Proxy Add Endpoint**: `POST https://hombre-uid-gateway.onrender.com/api/v1/uids/add`
 - **Proxy Remove Endpoint**: `POST https://hombre-uid-gateway.onrender.com/api/v1/uids/remove`
 - **Status Check Endpoint**: `GET https://hombre-uid-gateway.onrender.com/api/v1/uids/:uid`

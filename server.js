@@ -8,6 +8,14 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { MongoClient } = require('mongodb');
+
+// MongoDB Atlas Cloud Database State
+let mongoClient = null;
+let mongoDb = null;
+let mongoKeysCol = null;
+let mongoLogsCol = null;
+let mongoAuditCol = null;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -118,10 +126,47 @@ const LOGS_FILE = path.join(DATA_DIR, 'logs.json');
 const KEYS_BACKUP_FILE = path.join(DATA_DIR, 'keys.backup.json');
 const ADMIN_AUDIT_FILE = path.join(DATA_DIR, 'admin-audit.json');
 
-// In-Memory Master Store with Atomic Sync & Backup Recovery
+// In-Memory Master Store with Atomic Sync, Backup Recovery & Cloud Database
 let memoryKeys = [];
 let memoryLogs = [];
 let memoryAdminAudit = [];
+
+// Guaranteed System Seed Keys (Discord Bot & Master Keys)
+// These keys will NEVER be lost or deleted, even if Render restarts or clears temporary disks!
+const DEFAULT_PRESET_KEYS = [
+  {
+    id: "key_axc_bot_primary_67f4",
+    key: "HOMBRE-67F4F8DD7289997CEF67DBEB1F375DBC",
+    name: "Discord Bot AXC (Active Production)",
+    prefix: "HOMBRE",
+    createdAt: "2026-09-25T12:00:00.000Z",
+    expiresAt: null,
+    days: null,
+    uidLimit: 0,
+    maxCalls: 0,
+    registeredUids: [],
+    uidsCount: 0,
+    usageCount: 0,
+    isActive: true,
+    lastUsedAt: null
+  },
+  {
+    id: "key_axc_bot_secondary_0701",
+    key: "AXC-07019283A5D7F6712170DD5AC7C9C90D",
+    name: "Discord Bot AXC Secondary Key",
+    prefix: "AXC",
+    createdAt: "2026-09-25T12:00:00.000Z",
+    expiresAt: null,
+    days: null,
+    uidLimit: 0,
+    maxCalls: 0,
+    registeredUids: [],
+    uidsCount: 0,
+    usageCount: 0,
+    isActive: true,
+    lastUsedAt: null
+  }
+];
 
 function loadDataFromDisk() {
   try {
@@ -149,6 +194,31 @@ function loadDataFromDisk() {
     }
   }
 
+  // Guarantee permanent preset keys are always active
+  for (const pk of DEFAULT_PRESET_KEYS) {
+    const existing = memoryKeys.find(k => k.key.trim() === pk.key.trim());
+    if (!existing) {
+      memoryKeys.push(pk);
+    }
+  }
+
+  // Merge SEED_KEYS from Render Environment Variables (survives all redeploys!)
+  if (process.env.SEED_KEYS) {
+    try {
+      const seeds = JSON.parse(process.env.SEED_KEYS);
+      if (Array.isArray(seeds)) {
+        for (const sk of seeds) {
+          if (!memoryKeys.some(k => k.key.trim() === sk.key.trim())) {
+            memoryKeys.push(sk);
+          }
+        }
+        console.log(`[HOMBRE SEED] Merged keys from SEED_KEYS environment variable.`);
+      }
+    } catch (e) {
+      console.error('Error parsing SEED_KEYS env var:', e.message);
+    }
+  }
+
   try {
     if (fs.existsSync(LOGS_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(LOGS_FILE, 'utf8'));
@@ -168,6 +238,58 @@ function loadDataFromDisk() {
   }
 }
 loadDataFromDisk();
+
+// Initialize MongoDB Atlas Cloud Connection (Zero-Loss Persistent Architecture)
+async function initMongoDB() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.log('[DATABASE] Running in local JSON storage mode with auto-seeded keys and backup sync.');
+    return;
+  }
+  try {
+    mongoClient = new MongoClient(uri, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    await mongoClient.connect();
+    mongoDb = mongoClient.db(process.env.MONGODB_DB_NAME || 'hombre_gateway');
+    mongoKeysCol = mongoDb.collection('keys');
+    mongoLogsCol = mongoDb.collection('logs');
+    mongoAuditCol = mongoDb.collection('admin_audit');
+
+    console.log('✅ [DATABASE] Connected to MongoDB Atlas Cloud. 100% Permanent Storage Active.');
+
+    // 1. Sync Keys: Load from MongoDB Atlas Cloud
+    const remoteKeys = await mongoKeysCol.find({}).toArray();
+    if (remoteKeys.length > 0) {
+      const cleanKeys = remoteKeys.map(({ _id, ...k }) => k);
+      // Merge with memoryKeys preserving any keys
+      for (const rk of cleanKeys) {
+        const existingIdx = memoryKeys.findIndex(k => k.key.trim() === rk.key.trim());
+        if (existingIdx >= 0) {
+          memoryKeys[existingIdx] = rk;
+        } else {
+          memoryKeys.push(rk);
+        }
+      }
+      console.log(`[DATABASE] Synchronized ${memoryKeys.length} keys from MongoDB cloud.`);
+      writeJSON(KEYS_FILE, memoryKeys);
+    } else if (memoryKeys.length > 0) {
+      // Seed remote MongoDB from local initial keys
+      await mongoKeysCol.insertMany(memoryKeys.map(k => ({ ...k })));
+      console.log(`[DATABASE] Seeded MongoDB cloud with ${memoryKeys.length} initial keys.`);
+    }
+
+    // 2. Sync Audit Logs
+    const remoteAudit = await mongoAuditCol.find({}).sort({ timestamp: -1 }).limit(500).toArray();
+    if (remoteAudit.length > 0) {
+      const cleanAudit = remoteAudit.map(({ _id, ...a }) => a);
+      memoryAdminAudit = cleanAudit;
+      writeJSON(ADMIN_AUDIT_FILE, memoryAdminAudit);
+    }
+  } catch (err) {
+    console.error('⚠️ [DATABASE] MongoDB connection error:', err.message);
+  }
+}
 
 // Helper to read / write JSON with in-memory caching and atomic file writes
 function readJSON(file, defaultVal) {
@@ -203,6 +325,20 @@ function writeJSON(file, data) {
       }
     } catch (err) {
       console.error(`Error writing ${KEYS_FILE}:`, err);
+    }
+
+    // Cloud Mirror: Asynchronously sync keys to MongoDB Atlas
+    if (mongoKeysCol) {
+      (async () => {
+        try {
+          await mongoKeysCol.deleteMany({});
+          if (memoryKeys.length > 0) {
+            await mongoKeysCol.insertMany(memoryKeys.map(k => ({ ...k })));
+          }
+        } catch (e) {
+          console.error('[DATABASE] Error syncing keys to MongoDB:', e.message);
+        }
+      })();
     }
     return;
   }
@@ -240,14 +376,19 @@ function writeJSON(file, data) {
 
 function addLog(logEntry) {
   const logs = readJSON(LOGS_FILE, []);
-  logs.unshift({
+  const entry = {
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
     ...logEntry
-  });
-  // Keep last 300 logs
+  };
+  logs.unshift(entry);
+  // Keep last 300 logs in memory
   if (logs.length > 300) logs.pop();
   writeJSON(LOGS_FILE, logs);
+
+  if (mongoLogsCol) {
+    mongoLogsCol.insertOne({ ...entry }).catch(e => console.error('[DATABASE] Log insert error:', e.message));
+  }
 }
 
 // Immutable Admin Security Audit Logger (Permanent & Non-Clearable)
@@ -274,6 +415,10 @@ function addAdminAudit({ eventType, action, details = {}, req, ip, userAgent, le
   // Retain up to 3000 permanent audit logs
   if (memoryAdminAudit.length > 3000) memoryAdminAudit.pop();
   writeJSON(ADMIN_AUDIT_FILE, memoryAdminAudit);
+
+  if (mongoAuditCol) {
+    mongoAuditCol.insertOne({ ...auditEntry }).catch(e => console.error('[DATABASE] Audit insert error:', e.message));
+  }
   return auditEntry;
 }
 
@@ -1396,17 +1541,90 @@ app.delete('/api/admin/audit-logs', requireAdminAuth, (req, res) => {
   });
 });
 
-// Start Server
+// ==========================================
+// DATABASE PERSISTENCE & BACKUP MANAGEMENT
+// 100% Data Protection: One-Click JSON Backup & Restore
+// ==========================================
+
+// Database Backup Export (One-Click JSON Download)
+app.get('/api/admin/database/export', requireAdminAuth, (req, res) => {
+  addAdminAudit({
+    eventType: 'DATABASE_BACKUP',
+    level: 'INFO',
+    action: 'Admin exported complete database backup',
+    details: { keysCount: memoryKeys.length, auditCount: memoryAdminAudit.length },
+    req
+  });
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="hombre-backup-${Date.now()}.json"`);
+  res.json({
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    keys: memoryKeys,
+    auditLogs: memoryAdminAudit
+  });
+});
+
+// Database Backup Import / Restore
+app.post('/api/admin/database/import', requireAdminAuth, express.json({ limit: '15mb' }), async (req, res) => {
+  const { keys, auditLogs } = req.body || {};
+  if (!Array.isArray(keys)) {
+    return res.status(400).json({ success: false, error: 'Invalid backup format: "keys" must be an array' });
+  }
+
+  let importedCount = 0;
+  for (const k of keys) {
+    if (k && k.key) {
+      const idx = memoryKeys.findIndex(existing => existing.key.trim() === k.key.trim());
+      if (idx >= 0) {
+        memoryKeys[idx] = { ...memoryKeys[idx], ...k };
+      } else {
+        memoryKeys.push(k);
+      }
+      importedCount++;
+    }
+  }
+
+  writeJSON(KEYS_FILE, memoryKeys);
+
+  if (Array.isArray(auditLogs)) {
+    memoryAdminAudit = [...auditLogs, ...memoryAdminAudit].slice(0, 1000);
+    writeJSON(ADMIN_AUDIT_FILE, memoryAdminAudit);
+  }
+
+  addAdminAudit({
+    eventType: 'DATABASE_RESTORE',
+    level: 'NOTICE',
+    action: `Admin restored database backup (${importedCount} keys imported)`,
+    details: { importedCount, totalKeys: memoryKeys.length },
+    req
+  });
+
+  res.json({
+    success: true,
+    message: `Database successfully restored. ${importedCount} keys active.`,
+    totalKeys: memoryKeys.length
+  });
+});
+
+// Start Server & Connect Database
 const RENDER_PROD_URL = process.env.RENDER_EXTERNAL_URL || 'https://hombre-uid-gateway.onrender.com';
 
-app.listen(PORT, () => {
-  console.log(`===============================================`);
-  console.log(`👑 HOMBRE UID Gateway running on port ${PORT}`);
-  console.log(`🌐 Public Landing Page: ${RENDER_PROD_URL}`);
-  console.log(`🛡️ Admin Portal: ${RENDER_PROD_URL}/admin (Locked: Ctrl+Shift+V)`);
-  console.log(`📡 Public Proxy Endpoint: POST ${RENDER_PROD_URL}/api/v1/uids/add`);
-  console.log(`🎯 Upstream Target: AIR-GAPPED & SECURED (Backend Only)`);
-  console.log(`🔑 Admin Authentication: Active`);
-  console.log(`===============================================`);
-});
+(async () => {
+  // Connect to Cloud Database if configured
+  await initMongoDB();
+
+  app.listen(PORT, () => {
+    console.log(`===============================================`);
+    console.log(`👑 HOMBRE UID Gateway running on port ${PORT}`);
+    console.log(`🌐 Public Landing Page: ${RENDER_PROD_URL}`);
+    console.log(`🛡️ Admin Portal: ${RENDER_PROD_URL}/admin (Locked: Ctrl+Alt+V)`);
+    console.log(`📡 Public Proxy Endpoint: POST ${RENDER_PROD_URL}/api/v1/uids/add`);
+    console.log(`🎯 Upstream Target: AIR-GAPPED & SECURED (Backend Only)`);
+    console.log(`🔑 Admin Authentication: Active`);
+    console.log(`💾 Active API Keys in Memory: ${memoryKeys.length}`);
+    console.log(`===============================================`);
+  });
+})();
 

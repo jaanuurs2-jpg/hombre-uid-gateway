@@ -60,8 +60,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ambient Animated Waves Canvas in Black & Silver */
-#waves-canvas {
+/* Ray-Marched Endless Monochrome Canyon Background (Ravine) */
+#ravine-canvas {
   position: fixed;
   top: 0;
   left: 0;
@@ -69,6 +69,8 @@ body {
   height: 100vh;
   pointer-events: none;
   z-index: 0;
+  opacity: 0.95;
+  background-color: #03060c;
 }
 
 /* Subtle, sophisticated background grid and ambient lighting */

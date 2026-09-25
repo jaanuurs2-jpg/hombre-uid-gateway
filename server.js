@@ -11,7 +11,7 @@ const MASTER_API_URL = process.env.MASTER_API_URL || 'https://mani272uidbypass.v
 const MASTER_REMOVE_URL = process.env.MASTER_REMOVE_URL || MASTER_API_URL.replace('/add', '/remove');
 const MASTER_API_KEY = process.env.MASTER_API_KEY || 'MANI272-F5523A6A44D1FB13C5F8C71A9C4A64BE';
 const DEFAULT_PREFIX = process.env.DEFAULT_PREFIX || 'HOMBRE';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'hombre123';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'v9du0njnxw';
 const ADMIN_TOKEN = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest('hex');
 
 // Hardened Anti-Inspect & Security Headers Middleware

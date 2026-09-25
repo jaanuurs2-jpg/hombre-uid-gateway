@@ -20,7 +20,7 @@ Click the button below to instantly deploy your instance on Render with free SSL
 | `MASTER_API_URL` | Upstream target endpoint | `Set in .env or Render Dashboard (Private)` |
 | `MASTER_API_KEY` | Air-gapped master key | `Set in .env or Render Dashboard (Private)` |
 | `DEFAULT_PREFIX` | Prefix for generated keys | `HOMBRE` |
-| `ADMIN_PASSWORD` | Admin console secret password | `Configurable (Default: hombre123)` |
+| `ADMIN_PASSWORD` | Admin console secret password | `Private (Set in .env or Render Dashboard)` |
 
 ---
 
@@ -65,4 +65,4 @@ When a key exceeds its allocated UID limit, the gateway immediately returns:
 ---
 
 ## 🛡️ Secret Admin Vault
-Press `Ctrl + Shift + V` on the landing page to unlock the admin console with password `hombre123`.
+Press `Ctrl + Shift + V` on the landing page to unlock the admin console with your configured secret password.

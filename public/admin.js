@@ -54,6 +54,11 @@ async function checkAuthAndInitialize() {
       if (searchInput) {
         searchInput.addEventListener('input', (e) => filterKeysTable(e.target.value));
       }
+
+      const logSearch = document.getElementById('log-search-input');
+      if (logSearch) {
+        logSearch.addEventListener('input', (e) => filterLogsTable(e.target.value));
+      }
     } else {
       clearAdminToken();
       showLockScreen();
@@ -105,7 +110,7 @@ function adminLogout() {
 function updatePublicUrlDisplay() {
   const el = document.getElementById('display-public-url');
   if (el) {
-    el.innerText = `${BASE_URL}/api/v1/uids/add`;
+    el.value = `${window.location.origin}/api/v1/uids/add`;
   }
 }
 
@@ -317,13 +322,20 @@ function renderKeysTable(keys) {
       ? `<span style="font-family: var(--font-mono); font-size: 12px; ${isLimitFull ? 'color: var(--accent-rose); font-weight: 700;' : ''}"><strong>${uidsUsed}</strong> / ${effectiveLimit} UIDs</span>`
       : `<span style="font-family: var(--font-mono); font-size: 12px;"><strong>${uidsUsed}</strong> (Unlimited)</span>`;
 
+    const viewUidsBtn = `<button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; margin-top: 4px; display: inline-flex; align-items: center; gap: 4px;" onclick="openKeyUidsModal('${k.id}')">👁️ View UIDs (${uidsUsed})</button>`;
+
     return `
       <tr>
         <td><strong>${escapeHtml(k.name)}</strong></td>
         <td><span class="key-code">${escapeHtml(k.key)}</span></td>
         <td>${statusBadge}</td>
         <td>${expiryStr}</td>
-        <td>${quotaStr}</td>
+        <td>
+          <div style="display: flex; flex-direction: column; align-items: flex-start;">
+            ${quotaStr}
+            ${viewUidsBtn}
+          </div>
+        </td>
         <td>${createdStr}</td>
         <td>
           <div class="action-btns">
@@ -528,17 +540,35 @@ addUID();`;
 }
 
 // Logs
+let currentLogs = [];
+
 async function loadLogs() {
   try {
     const res = await fetch('/api/admin/logs', {
       headers: { 'x-admin-token': getAdminToken() }
     });
     if (!res.ok) return;
-    const logs = await res.json();
-    renderLogsTable(logs);
+    currentLogs = await res.json();
+    renderLogsTable(currentLogs);
   } catch (err) {
     console.error('Failed to load logs:', err);
   }
+}
+
+function filterLogsTable(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) {
+    renderLogsTable(currentLogs);
+    return;
+  }
+  const filtered = currentLogs.filter(l => 
+    (l.key && l.key.toLowerCase().includes(q)) ||
+    (l.clientName && l.clientName.toLowerCase().includes(q)) ||
+    (l.uid && String(l.uid).toLowerCase().includes(q)) ||
+    (l.status && String(l.status).toLowerCase().includes(q)) ||
+    (l.ip && String(l.ip).toLowerCase().includes(q))
+  );
+  renderLogsTable(filtered);
 }
 
 function renderLogsTable(logs) {
@@ -546,7 +576,7 @@ function renderLogsTable(logs) {
   if (!tbody) return;
 
   if (logs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No request logs recorded yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No request logs match your filter.</td></tr>`;
     return;
   }
 
@@ -585,6 +615,108 @@ async function clearLogs() {
   }
 }
 
+// ==========================================
+// UID INSPECTION AUDIT MODAL (Per-Key UIDs)
+// ==========================================
+let currentModalUids = [];
+
+async function openKeyUidsModal(keyId) {
+  const modal = document.getElementById('key-uids-modal');
+  const titleEl = document.getElementById('modal-key-title');
+  const subtitleEl = document.getElementById('modal-key-code');
+  const countEl = document.getElementById('modal-uids-count');
+  const tbody = document.getElementById('modal-uids-table-body');
+  const searchInput = document.getElementById('modal-search-input');
+
+  if (searchInput) searchInput.value = '';
+  if (modal) modal.classList.remove('hidden');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Loading registered UIDs...</td></tr>`;
+
+  try {
+    const res = await fetch(`/api/admin/keys/${keyId}/uids`, {
+      headers: { 'x-admin-token': getAdminToken() }
+    });
+    if (!res.ok) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Failed to load UIDs for this key</td></tr>`;
+      return;
+    }
+    const data = await res.json();
+    currentModalUids = data.uids || [];
+    
+    if (titleEl) titleEl.innerText = `${data.name || 'Key'} — Registered UIDs`;
+    if (subtitleEl) subtitleEl.innerText = data.key;
+    if (countEl) countEl.innerText = `${currentModalUids.length} UIDs (Limit: ${data.limit > 0 ? data.limit : 'Unlimited'})`;
+
+    renderModalUidsTable(currentModalUids);
+  } catch (err) {
+    console.error('Error fetching key UIDs:', err);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">Network error fetching UIDs</td></tr>`;
+  }
+}
+
+function renderModalUidsTable(uids) {
+  const tbody = document.getElementById('modal-uids-table-body');
+  if (!tbody) return;
+
+  if (uids.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No UIDs registered with this key yet.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = uids.map((item, idx) => {
+    const dateStr = item.addedAt ? new Date(item.addedAt).toLocaleString() : 'N/A';
+    return `
+      <tr>
+        <td style="color: var(--text-tertiary); font-size: 11px;">${idx + 1}</td>
+        <td><code style="font-weight: 700; color: #fff; font-size: 13px;">${escapeHtml(item.uid)}</code></td>
+        <td>${escapeHtml(item.name || 'N/A')}</td>
+        <td><span class="badge badge-subtle">${item.days || 30} Days</span></td>
+        <td style="font-size: 12px; color: var(--text-secondary);">${dateStr}</td>
+        <td><small class="text-muted">${escapeHtml(item.ip || 'N/A')}</small></td>
+        <td>
+          <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;" onclick="copyPlain('${escapeHtml(item.uid)}')">Copy</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterModalUids(query) {
+  const q = (query || '').toLowerCase().trim();
+  if (!q) {
+    renderModalUidsTable(currentModalUids);
+    return;
+  }
+  const filtered = currentModalUids.filter(u => 
+    String(u.uid).toLowerCase().includes(q) || 
+    (u.name && String(u.name).toLowerCase().includes(q)) ||
+    (u.ip && String(u.ip).toLowerCase().includes(q))
+  );
+  renderModalUidsTable(filtered);
+}
+
+function closeKeyUidsModal() {
+  const modal = document.getElementById('key-uids-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copyAllModalUids() {
+  if (!currentModalUids || currentModalUids.length === 0) {
+    showToast('No UIDs to copy');
+    return;
+  }
+  const uidList = currentModalUids.map(u => u.uid).join('\n');
+  navigator.clipboard.writeText(uidList);
+  showToast(`Copied ${currentModalUids.length} UIDs to clipboard! 📋`);
+}
+
+// Close modal with Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeKeyUidsModal();
+  }
+});
+
 // Toast & Helpers
 function showToast(msg) {
   const toast = document.getElementById('toast');
@@ -599,7 +731,7 @@ function showToast(msg) {
 
 function copyPlain(text) {
   navigator.clipboard.writeText(text);
-  showToast('Key copied to clipboard! 📋');
+  showToast('Copied to clipboard! 📋');
 }
 
 function copyResultKey() {
@@ -611,7 +743,8 @@ function copyResultKey() {
 function copyText(elemId) {
   const el = document.getElementById(elemId);
   if (el) {
-    navigator.clipboard.writeText(el.innerText);
+    const val = (el.value !== undefined && el.value !== '') ? el.value : el.innerText;
+    navigator.clipboard.writeText(val);
     showToast('Copied to clipboard! 📋');
   }
 }

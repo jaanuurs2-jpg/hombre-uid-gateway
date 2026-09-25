@@ -17,10 +17,10 @@ Click the button below to instantly deploy your instance on Render with free SSL
 | Variable | Description | Default |
 |---|---|---|
 | `PORT` | Web server listening port | `3000` (Render sets automatically) |
-| `MASTER_API_URL` | Upstream target endpoint | `https://mani272uidbypass.vercel.app/api/v1/uids/add` |
-| `MASTER_API_KEY` | Air-gapped master key | `MANI272-F5523A6A44D1FB13C5F8C71A9C4A64BE` |
+| `MASTER_API_URL` | Upstream target endpoint | `Set in .env or Render Dashboard (Private)` |
+| `MASTER_API_KEY` | Air-gapped master key | `Set in .env or Render Dashboard (Private)` |
 | `DEFAULT_PREFIX` | Prefix for generated keys | `HOMBRE` |
-| `ADMIN_PASSWORD` | Admin console secret password | `hombre123` |
+| `ADMIN_PASSWORD` | Admin console secret password | `Configurable (Default: hombre123)` |
 
 ---
 

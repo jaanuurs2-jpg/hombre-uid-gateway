@@ -187,19 +187,23 @@
               <div class="form-field">
                 <label>Your Public Gateway Endpoint</label>
                 <div style="display: flex; gap: 8px;">
-                  <input type="text" id="display-public-url" class="mono-input" readonly value="http://localhost:3000/api/v1/uids/add">
+                  <input type="text" id="display-public-url" class="mono-input" readonly value="" placeholder="Detecting live gateway endpoint...">
                   <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('display-public-url')">Copy</button>
                 </div>
               </div>
 
               <div class="form-field">
-                <label>Upstream Target (Server-Side Only)</label>
-                <input type="text" class="mono-input" readonly value="https://mani272uidbypass.vercel.app/api/v1/uids/add" style="color: var(--text-tertiary);">
+                <label>Upstream Target Route</label>
+                <div class="badge badge-success" style="align-self: flex-start; padding: 6px 14px; font-size: 12px; gap: 8px;">
+                  <span class="pulse-dot"></span>
+                  <span>ENCRYPTED TUNNEL ACTIVE (AIR-GAPPED & PRIVATE)</span>
+                </div>
+                <small class="text-dim">Upstream endpoint address and Master Key are strictly protected on the backend server and never exposed in client requests.</small>
               </div>
 
               <div class="form-field">
                 <label>Master Upstream Key</label>
-                <div class="badge badge-warning" style="align-self: flex-start;">LOCKED IN SERVER ENVIRONMENT (.ENV)</div>
+                <div class="badge badge-warning" style="align-self: flex-start; padding: 5px 12px; font-size: 12px;">LOCKED IN SERVER ENVIRONMENT (.ENV)</div>
               </div>
             </div>
           </div>
@@ -417,7 +421,8 @@
               <h2>UID Bypass Request Logs</h2>
               <p>Real-time log of registered UIDs, status, and response latency.</p>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <input type="text" id="log-search-input" placeholder="Search by UID, Bypass Key, Client Name, Status..." style="width: 320px;" class="mono-input">
               <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Refresh</button>
               <button class="btn btn-danger-outline btn-sm" onclick="clearLogs()">Clear History</button>
             </div>
@@ -456,6 +461,51 @@
       </div>
     </footer>
 
+  </div>
+
+  <!-- Key Registered UIDs Inspection Modal -->
+  <div id="key-uids-modal" class="secret-modal-backdrop hidden" onclick="if(event.target===this) closeKeyUidsModal()">
+    <div class="uid-modal-box">
+      <button class="modal-close-btn" onclick="closeKeyUidsModal()">✕</button>
+      
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; padding-right: 28px;">
+        <div>
+          <h2 id="modal-key-title" style="font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px;">Registered UIDs Audit</h2>
+          <p id="modal-key-subtitle" class="text-dim" style="font-size: 13px;">Key: <span class="key-code" id="modal-key-code">--</span></p>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-sm" onclick="copyAllModalUids()">📋 Copy All UIDs</button>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center;">
+        <input type="text" id="modal-search-input" placeholder="Filter UIDs or names in this key..." class="mono-input" style="flex: 1;" oninput="filterModalUids(this.value)">
+        <span class="badge badge-success" id="modal-uids-count">0 UIDs</span>
+      </div>
+
+      <div class="uid-modal-body">
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">#</th>
+                <th>Target Game UID</th>
+                <th>Name Tag</th>
+                <th>Days</th>
+                <th>Added Date & Time</th>
+                <th>Caller IP</th>
+                <th style="width: 70px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="modal-uids-table-body">
+              <tr>
+                <td colspan="7" class="text-center text-muted">No UIDs registered with this key yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Toast -->

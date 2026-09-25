@@ -13,9 +13,77 @@ const DEFAULT_PREFIX = process.env.DEFAULT_PREFIX || 'HOMBRE';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'hombre123';
 const ADMIN_TOKEN = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest('hex');
 
+// Hardened Security Headers Middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Security: Brute-Force Rate Limiter for Admin Login
+const failedLoginAttempts = new Map(); // ip -> { count, lockedUntil }
+
+function checkLoginRateLimit(req, res, next) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = failedLoginAttempts.get(ip);
+
+  if (record && record.lockedUntil && now < record.lockedUntil) {
+    const remainingSeconds = Math.ceil((record.lockedUntil - now) / 1000);
+    return res.status(429).json({
+      success: false,
+      error: `Security Lockout: Too many failed login attempts. Try again in ${remainingSeconds} seconds.`
+    });
+  }
+  next();
+}
+
+function recordFailedLogin(ip) {
+  const now = Date.now();
+  const record = failedLoginAttempts.get(ip) || { count: 0, lockedUntil: null };
+  record.count += 1;
+  if (record.count >= 5) {
+    record.lockedUntil = now + 10 * 60 * 1000; // 10 minutes lockout
+    record.count = 0;
+  }
+  failedLoginAttempts.set(ip, record);
+}
+
+function clearFailedLogin(ip) {
+  failedLoginAttempts.delete(ip);
+}
+
+// Security: API Request Rate Limiter (Anti-DDoS / Flooding)
+const apiRequestLimits = new Map(); // ip -> { count, windowStart }
+function checkApiRateLimit(req, res, next) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 120; // 120 req/min per IP
+
+  const record = apiRequestLimits.get(ip) || { count: 0, windowStart: now };
+  if (now - record.windowStart > windowMs) {
+    record.count = 1;
+    record.windowStart = now;
+  } else {
+    record.count += 1;
+    if (record.count > maxRequests) {
+      return res.status(429).json({
+        success: false,
+        error: 'Too Many Requests: Rate limit exceeded. Please wait before retrying.'
+      });
+    }
+  }
+  apiRequestLimits.set(ip, record);
+  next();
+}
 
 // Ensure data folder exists
 const DATA_DIR = path.join(__dirname, 'data');
@@ -62,18 +130,28 @@ function addLog(logEntry) {
     timestamp: new Date().toISOString(),
     ...logEntry
   });
-  // Keep last 200 logs
-  if (logs.length > 200) logs.pop();
+  // Keep last 300 logs
+  if (logs.length > 300) logs.pop();
   writeJSON(LOGS_FILE, logs);
 }
 
-// Admin Auth Middleware
+// Timing-Safe Admin Auth Middleware
 function requireAdminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || req.query.admin_token;
-  if (!token || token !== ADMIN_TOKEN) {
+  if (!token) {
     return res.status(401).json({
       success: false,
       error: 'Unauthorized: Admin authentication token required'
+    });
+  }
+
+  const tokenBuffer = Buffer.from(String(token));
+  const adminTokenBuffer = Buffer.from(ADMIN_TOKEN);
+
+  if (tokenBuffer.length !== adminTokenBuffer.length || !crypto.timingSafeEqual(tokenBuffer, adminTokenBuffer)) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: Invalid Admin authentication token'
     });
   }
   next();
@@ -88,7 +166,7 @@ app.get('/admin', (req, res) => {
 // 1. REVERSE PROXY ENDPOINT
 // Clients call this endpoint with their HOMBRE-... key!
 // ==========================================
-app.post('/api/v1/uids/add', async (req, res) => {
+app.post('/api/v1/uids/add', checkApiRateLimit, async (req, res) => {
   const startTime = Date.now();
   
   // Extract key from headers or query
@@ -215,10 +293,27 @@ app.post('/api/v1/uids/add', async (req, res) => {
     }
   }
 
-  // Increment usage count and track registered UID
-  if (incomingUid && !foundKey.registeredUids.includes(incomingUid)) {
-    foundKey.registeredUids.push(incomingUid);
+  // Increment usage count and track registered UID with full audit details
+  if (incomingUid) {
+    if (!foundKey.registeredUids) foundKey.registeredUids = [];
+    if (!foundKey.registeredUidsDetails) foundKey.registeredUidsDetails = [];
+
+    const existingDetail = foundKey.registeredUidsDetails.find(d => d.uid === incomingUid);
+    if (!existingDetail) {
+      foundKey.registeredUidsDetails.unshift({
+        uid: incomingUid,
+        name: (name && String(name).trim()) ? String(name).trim() : 'N/A',
+        days: days ? parseInt(days, 10) : 30,
+        addedAt: new Date().toISOString(),
+        ip: clientIp
+      });
+    }
+
+    if (!foundKey.registeredUids.includes(incomingUid)) {
+      foundKey.registeredUids.push(incomingUid);
+    }
   }
+
   foundKey.uidsCount = foundKey.registeredUids.length;
   foundKey.usageCount = (foundKey.usageCount || 0) + 1;
   foundKey.lastUsedAt = new Date().toISOString();
@@ -257,6 +352,8 @@ app.post('/api/v1/uids/add', async (req, res) => {
       key: clientKey,
       clientName: foundKey.name,
       uid: uid || 'N/A',
+      nameTag: name || 'N/A',
+      days: days || 30,
       status: responseStatus,
       success: upstreamResponse.ok,
       ip: clientIp,
@@ -272,30 +369,39 @@ app.post('/api/v1/uids/add', async (req, res) => {
       key: clientKey,
       clientName: foundKey.name,
       uid: uid || 'N/A',
+      nameTag: name || 'N/A',
+      days: days || 30,
       status: 502,
       success: false,
-      error: err.message,
+      error: 'Upstream gateway unreachable',
       ip: clientIp,
       durationMs: durationMs
     });
     return res.status(502).json({
       success: false,
-      error: 'Bad Gateway: Failed to reach upstream provider',
+      error: 'Bad Gateway: Upstream provider is temporarily unreachable',
       details: err.message
     });
   }
 });
 
 // ==========================================
-// 2. ADMIN AUTHENTICATION
+// 2. ADMIN AUTHENTICATION (Brute-Force Protected & Timing Safe)
 // ==========================================
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', checkLoginRateLimit, (req, res) => {
   const { password } = req.body;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+
   if (!password) {
+    recordFailedLogin(ip);
     return res.status(400).json({ success: false, error: 'Password is required' });
   }
 
-  if (password.trim() === ADMIN_PASSWORD.trim()) {
+  const passBuffer = Buffer.from(String(password).trim());
+  const adminPassBuffer = Buffer.from(ADMIN_PASSWORD.trim());
+
+  if (passBuffer.length === adminPassBuffer.length && crypto.timingSafeEqual(passBuffer, adminPassBuffer)) {
+    clearFailedLogin(ip);
     return res.json({
       success: true,
       message: 'Access Granted! Welcome to HOMBRE Admin Vault.',
@@ -303,6 +409,7 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
+  recordFailedLogin(ip);
   return res.status(401).json({
     success: false,
     error: 'Incorrect Password. Access Denied.'
@@ -312,7 +419,12 @@ app.post('/api/admin/login', (req, res) => {
 // Verify token validity
 app.get('/api/admin/verify-token', (req, res) => {
   const token = req.headers['x-admin-token'] || req.query.admin_token;
-  if (token === ADMIN_TOKEN) {
+  if (!token) return res.status(401).json({ success: false, valid: false });
+
+  const tokenBuffer = Buffer.from(String(token));
+  const adminTokenBuffer = Buffer.from(ADMIN_TOKEN);
+
+  if (tokenBuffer.length === adminTokenBuffer.length && crypto.timingSafeEqual(tokenBuffer, adminTokenBuffer)) {
     return res.json({ success: true, valid: true });
   }
   return res.status(401).json({ success: false, valid: false });
@@ -322,7 +434,7 @@ app.get('/api/admin/verify-token', (req, res) => {
 // 3. ADMIN API ENDPOINTS (Protected by Token)
 // ==========================================
 
-// Get System Stats & Overview
+// Get System Stats & Overview (Air-gapped: never leaks masterUrl)
 app.get('/api/admin/stats', requireAdminAuth, (req, res) => {
   const keys = readJSON(KEYS_FILE, []);
   const logs = readJSON(LOGS_FILE, []);
@@ -330,7 +442,7 @@ app.get('/api/admin/stats', requireAdminAuth, (req, res) => {
   const totalKeys = keys.length;
   const activeKeys = keys.filter(k => {
     const notExpired = !k.expiresAt || new Date(k.expiresAt).getTime() > Date.now();
-    const quotaOk = !k.maxCalls || k.usageCount < k.maxCalls;
+    const quotaOk = !k.uidLimit || (k.registeredUids && k.registeredUids.length < k.uidLimit);
     return k.isActive && notExpired && quotaOk;
   }).length;
 
@@ -342,9 +454,37 @@ app.get('/api/admin/stats', requireAdminAuth, (req, res) => {
     activeKeys,
     totalRequests,
     successfulRequests,
-    masterUrl: MASTER_API_URL,
+    upstreamTunnel: 'PROTECTED_AIR_GAPPED',
     defaultPrefix: DEFAULT_PREFIX,
     uptimeSeconds: Math.floor(process.uptime())
+  });
+});
+
+// Get all registered UIDs for a specific key
+app.get('/api/admin/keys/:id/uids', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const keys = readJSON(KEYS_FILE, []);
+  const foundKey = keys.find(k => k.id === id);
+
+  if (!foundKey) {
+    return res.status(404).json({ success: false, error: 'Key not found' });
+  }
+
+  const details = foundKey.registeredUidsDetails || (foundKey.registeredUids || []).map(u => ({
+    uid: u,
+    name: 'N/A',
+    days: 30,
+    addedAt: foundKey.createdAt,
+    ip: 'N/A'
+  }));
+
+  res.json({
+    success: true,
+    key: foundKey.key,
+    name: foundKey.name,
+    limit: foundKey.uidLimit,
+    total: details.length,
+    uids: details
   });
 });
 

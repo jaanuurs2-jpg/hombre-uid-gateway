@@ -928,6 +928,27 @@ input:focus, select:focus, textarea:focus {
   text-align: left;
 }
 
+.uid-modal-box {
+  background: #0b0f19;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 25px 70px -10px rgba(0, 0, 0, 0.95), 0 0 40px rgba(255, 255, 255, 0.12);
+  width: 95%;
+  max-width: 860px;
+  max-height: 88vh;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  position: relative;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+
+.uid-modal-body {
+  overflow-y: auto;
+  margin-top: 14px;
+  max-height: calc(88vh - 160px);
+}
+
 .modal-close-btn {
   position: absolute;
   top: 16px;

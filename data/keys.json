@@ -1,1 +1,34 @@
-[]
+[
+  {
+    "id": "key_axc_bot_primary_67f4",
+    "key": "HOMBRE-67F4F8DD7289997CEF67DBEB1F375DBC",
+    "name": "Discord Bot AXC (Active Production)",
+    "prefix": "HOMBRE",
+    "createdAt": "2026-09-25T12:00:00.000Z",
+    "expiresAt": null,
+    "days": null,
+    "uidLimit": 0,
+    "maxCalls": 0,
+    "registeredUids": [],
+    "uidsCount": 0,
+    "usageCount": 0,
+    "isActive": true,
+    "lastUsedAt": null
+  },
+  {
+    "id": "key_axc_bot_secondary_0701",
+    "key": "AXC-07019283A5D7F6712170DD5AC7C9C90D",
+    "name": "Discord Bot AXC Secondary Key",
+    "prefix": "AXC",
+    "createdAt": "2026-09-25T12:00:00.000Z",
+    "expiresAt": null,
+    "days": null,
+    "uidLimit": 0,
+    "maxCalls": 0,
+    "registeredUids": [],
+    "uidsCount": 0,
+    "usageCount": 0,
+    "isActive": true,
+    "lastUsedAt": null
+  }
+]

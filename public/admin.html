@@ -65,6 +65,9 @@
           <span class="pulse-dot"></span>
           <span>UPSTREAM CONNECTED</span>
         </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="exportDatabaseBackup()" title="Download complete database JSON backup">💾 Backup DB</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="triggerImportDatabase()" title="Restore database from JSON backup file">📥 Restore DB</button>
+        <input type="file" id="import-db-file" accept=".json" style="display: none;" onchange="handleDatabaseImport(event)">
         <a href="/" class="btn btn-secondary btn-sm">Public Site</a>
         <button class="btn btn-danger-outline btn-sm" onclick="adminLogout()">Disconnect</button>
       </div>

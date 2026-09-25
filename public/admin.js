@@ -1395,3 +1395,69 @@ function setupAdminAnimations() {
     }
   });
 }
+
+// ==========================================
+// DATABASE PERSISTENCE: 1-CLICK BACKUP & RESTORE
+// ==========================================
+async function exportDatabaseBackup() {
+  const token = getAdminToken();
+  if (!token) return;
+  try {
+    const res = await fetch('/api/admin/database/export', {
+      headers: { 'x-admin-token': token }
+    });
+    if (!res.ok) throw new Error('Backup request failed');
+    const data = await res.json();
+    const jsonStr = JSON.stringify(data, null, 2);
+    downloadBlob(jsonStr, `hombre-database-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+    showToast('Database backup downloaded successfully! 💾');
+  } catch (err) {
+    showToast('Error exporting backup: ' + err.message);
+  }
+}
+
+function triggerImportDatabase() {
+  const fileInput = document.getElementById('import-db-file');
+  if (fileInput) fileInput.click();
+}
+
+async function handleDatabaseImport(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const backupData = JSON.parse(e.target.result);
+      if (!backupData || !Array.isArray(backupData.keys)) {
+        throw new Error('Invalid JSON backup: File must contain a "keys" array');
+      }
+
+      if (!confirm(`Restore ${backupData.keys.length} keys from backup? Existing keys will be merged.`)) {
+        event.target.value = '';
+        return;
+      }
+
+      const token = getAdminToken();
+      const res = await fetch('/api/admin/database/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': token
+        },
+        body: JSON.stringify(backupData)
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Restore failed');
+
+      showToast(`Database restored! ${result.totalKeys} keys now active.`);
+      loadDashboardStats();
+      loadManagedKeys();
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    } finally {
+      event.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+}

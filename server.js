@@ -165,6 +165,22 @@ const DEFAULT_PRESET_KEYS = [
     usageCount: 0,
     isActive: true,
     lastUsedAt: null
+  },
+  {
+    id: "e553aa85-2bd5-4417-8dd7-3577685aa12d",
+    key: "HOMBRE-7AF5FF5C3E1146DB7BD78355B7EA9541",
+    name: "axc",
+    prefix: "HOMBRE",
+    createdAt: "2026-09-25T13:23:57.762Z",
+    expiresAt: "2026-10-25T13:23:57.762Z",
+    days: 30,
+    uidLimit: 1000,
+    maxCalls: 1000,
+    registeredUids: [],
+    uidsCount: 0,
+    usageCount: 0,
+    isActive: true,
+    lastUsedAt: null
   }
 ];
 

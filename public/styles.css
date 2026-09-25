@@ -60,7 +60,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ray-Marched Endless Monochrome Canyon Background (Ravine) */
+/* Obsidian Canyon Flight 3D Perspective Background (Ultra-Smooth 60FPS) */
+#canyon-canvas,
 #ravine-canvas {
   position: fixed;
   top: 0;
@@ -69,8 +70,8 @@ body {
   height: 100vh;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.95;
-  background-color: #03060c;
+  opacity: 1;
+  background-color: #010204;
 }
 
 /* Subtle, sophisticated background grid and ambient lighting */

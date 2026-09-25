@@ -303,8 +303,11 @@ function renderKeysTable(keys) {
     let statusBadge = '<span class="badge badge-success">Active</span>';
     const isExpired = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
     const effectiveLimit = k.uidLimit !== undefined ? k.uidLimit : (k.maxCalls || 0);
-    const uidsUsed = (k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : (k.uidsCount || k.usageCount || 0);
-    const isLimitFull = effectiveLimit > 0 && uidsUsed >= effectiveLimit;
+    const slotsConsumed = k.slotsConsumed !== undefined 
+      ? k.slotsConsumed 
+      : ((k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : (k.uidsCount || k.usageCount || 0));
+    const activeUids = (k.registeredUids && Array.isArray(k.registeredUids)) ? k.registeredUids.length : 0;
+    const isLimitFull = effectiveLimit > 0 && slotsConsumed >= effectiveLimit;
 
     if (!k.isActive) {
       statusBadge = '<span class="badge badge-warning">Paused</span>';
@@ -320,10 +323,10 @@ function renderKeysTable(keys) {
 
     const createdStr = new Date(k.createdAt).toLocaleDateString();
     const quotaStr = effectiveLimit > 0 
-      ? `<span style="font-family: var(--font-mono); font-size: 12px; ${isLimitFull ? 'color: var(--accent-rose); font-weight: 700;' : ''}"><strong>${uidsUsed}</strong> / ${effectiveLimit} UIDs</span>`
-      : `<span style="font-family: var(--font-mono); font-size: 12px;"><strong>${uidsUsed}</strong> (Unlimited)</span>`;
+      ? `<span style="font-family: var(--font-mono); font-size: 12px; ${isLimitFull ? 'color: var(--accent-rose); font-weight: 700;' : ''}"><strong>${slotsConsumed}</strong> / ${effectiveLimit} Slots Used</span>`
+      : `<span style="font-family: var(--font-mono); font-size: 12px;"><strong>${slotsConsumed}</strong> (Unlimited)</span>`;
 
-    const viewUidsBtn = `<button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" onclick="openKeyUidsModal('${k.id}')">👁️ View (${uidsUsed})</button>`;
+    const viewUidsBtn = `<button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;" onclick="openKeyUidsModal('${k.id}')">👁️ Active (${activeUids})</button>`;
     const addUidBtn = `<button type="button" class="btn btn-accent btn-sm" style="padding: 2px 7px; font-size: 11px; display: inline-flex; align-items: center; gap: 2px;" onclick="openKeyUidsModal('${k.id}', true)">➕ Add UID</button>`;
 
     return `
@@ -687,7 +690,7 @@ function setupModalAddUidForm() {
 async function removeUidFromKey(uid) {
   if (!currentModalKeyId || !uid) return;
 
-  if (!confirm(`Are you sure you want to remove UID "${uid}" from this key?\n\nThis will remove the UID and immediately free up 1 slot in the key's quota.`)) {
+  if (!confirm(`Are you sure you want to remove UID "${uid}" from this key?\n\n• UID will be removed from BOTH HOMBRE Gateway & Master Upstream API.\n• Note: Consumed quota slot remains consumed permanently (non-refundable).`)) {
     return;
   }
 
@@ -699,11 +702,11 @@ async function removeUidFromKey(uid) {
 
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast(`UID ${uid} removed! Slot freed 🗑️`);
+      showToast(data.message || `UID ${uid} removed from both APIs! 🗑️`);
       currentModalUids = data.uids || [];
       renderModalUidsTable(currentModalUids);
       const countEl = document.getElementById('modal-uids-count');
-      if (countEl) countEl.innerText = `${currentModalUids.length} UIDs`;
+      if (countEl) countEl.innerText = `${currentModalUids.length} Active UIDs • ${data.slotsConsumed || ''} Slots Used`;
       loadKeys();
       loadStats();
     } else {
@@ -744,10 +747,11 @@ async function openKeyUidsModal(keyId, focusAdd = false) {
     }
     const data = await res.json();
     currentModalUids = data.uids || [];
+    const slots = data.slotsConsumed !== undefined ? data.slotsConsumed : currentModalUids.length;
     
     if (titleEl) titleEl.innerText = `${data.name || 'Key'} — Registered UIDs`;
     if (subtitleEl) subtitleEl.innerText = data.key;
-    if (countEl) countEl.innerText = `${currentModalUids.length} UIDs (Limit: ${data.limit > 0 ? data.limit : 'Unlimited'})`;
+    if (countEl) countEl.innerText = `${currentModalUids.length} Active UIDs • ${slots}/${data.limit > 0 ? data.limit : 'Unlimited'} Slots Consumed (Non-Refundable)`;
 
     renderModalUidsTable(currentModalUids);
   } catch (err) {

@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MASTER_API_URL = process.env.MASTER_API_URL || 'https://mani272uidbypass.vercel.app/api/v1/uids/add';
+const MASTER_REMOVE_URL = process.env.MASTER_REMOVE_URL || MASTER_API_URL.replace('/add', '/remove');
 const MASTER_API_KEY = process.env.MASTER_API_KEY || 'MANI272-F5523A6A44D1FB13C5F8C71A9C4A64BE';
 const DEFAULT_PREFIX = process.env.DEFAULT_PREFIX || 'HOMBRE';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'hombre123';
@@ -263,16 +264,19 @@ app.post('/api/v1/uids/add', checkApiRateLimit, async (req, res) => {
     }
   }
 
-  // UID Limit Check
+  // UID Limit Check (Non-refundable quota: removing a UID does not restore consumed slots)
   const effectiveLimit = foundKey.uidLimit !== undefined ? foundKey.uidLimit : (foundKey.maxCalls || 0);
   if (!foundKey.registeredUids) foundKey.registeredUids = [];
+  if (foundKey.slotsConsumed === undefined) {
+    foundKey.slotsConsumed = foundKey.registeredUids.length;
+  }
   const incomingUid = uid ? String(uid).trim() : '';
 
   if (effectiveLimit > 0) {
     const isAlreadyRegistered = incomingUid && foundKey.registeredUids.includes(incomingUid);
     
     // If quota reached and this is a new UID
-    if (foundKey.registeredUids.length >= effectiveLimit && !isAlreadyRegistered) {
+    if (foundKey.slotsConsumed >= effectiveLimit && !isAlreadyRegistered) {
       addLog({
         endpoint: '/api/v1/uids/add',
         key: clientKey,
@@ -280,15 +284,16 @@ app.post('/api/v1/uids/add', checkApiRateLimit, async (req, res) => {
         uid: uid || 'N/A',
         status: 429,
         success: false,
-        error: `UID Limit Exceeded (${foundKey.registeredUids.length}/${effectiveLimit} UIDs used)`,
+        error: `UID Limit Exceeded (${foundKey.slotsConsumed}/${effectiveLimit} slots consumed)`,
         ip: clientIp,
         durationMs: Date.now() - startTime
       });
       return res.status(429).json({
         success: false,
-        error: `UID Limit Reached: This key has already registered its maximum quota of ${effectiveLimit} UIDs (${foundKey.registeredUids.length}/${effectiveLimit} used). Further requests are blocked.`,
+        error: `UID Limit Reached: This key has already consumed its maximum quota of ${effectiveLimit} UID slots (${foundKey.slotsConsumed}/${effectiveLimit} slots used). Removed UIDs do not restore quota slots.`,
         limit: effectiveLimit,
-        used: foundKey.registeredUids.length
+        slotsUsed: foundKey.slotsConsumed,
+        activeUids: foundKey.registeredUids.length
       });
     }
   }
@@ -311,6 +316,8 @@ app.post('/api/v1/uids/add', checkApiRateLimit, async (req, res) => {
 
     if (!foundKey.registeredUids.includes(incomingUid)) {
       foundKey.registeredUids.push(incomingUid);
+      // Consume a slot permanently (non-refundable even after removal)
+      foundKey.slotsConsumed = (foundKey.slotsConsumed || 0) + 1;
     }
   }
 
@@ -478,11 +485,16 @@ app.get('/api/admin/keys/:id/uids', requireAdminAuth, (req, res) => {
     ip: 'N/A'
   }));
 
+  const slotsUsed = foundKey.slotsConsumed !== undefined 
+    ? foundKey.slotsConsumed 
+    : ((foundKey.registeredUids && Array.isArray(foundKey.registeredUids)) ? foundKey.registeredUids.length : 0);
+
   res.json({
     success: true,
     key: foundKey.key,
     name: foundKey.name,
     limit: foundKey.uidLimit,
+    slotsConsumed: slotsUsed,
     total: details.length,
     uids: details
   });
@@ -508,6 +520,9 @@ app.post('/api/admin/keys/:id/uids', requireAdminAuth, async (req, res) => {
 
   if (!foundKey.registeredUids) foundKey.registeredUids = [];
   if (!foundKey.registeredUidsDetails) foundKey.registeredUidsDetails = [];
+  if (foundKey.slotsConsumed === undefined) {
+    foundKey.slotsConsumed = foundKey.registeredUids.length;
+  }
 
   // Check if UID already registered on this key
   const alreadyExists = foundKey.registeredUids.includes(cleanUid);
@@ -557,6 +572,7 @@ app.post('/api/admin/keys/:id/uids', requireAdminAuth, async (req, res) => {
   };
 
   foundKey.registeredUids.push(cleanUid);
+  foundKey.slotsConsumed = (foundKey.slotsConsumed || 0) + 1;
   foundKey.registeredUidsDetails.unshift(newDetail);
   foundKey.uidsCount = foundKey.registeredUids.length;
   foundKey.usageCount = (foundKey.usageCount || 0) + 1;
@@ -581,13 +597,14 @@ app.post('/api/admin/keys/:id/uids', requireAdminAuth, async (req, res) => {
     success: true,
     message: `UID ${cleanUid} successfully added to key!`,
     upstreamMessage,
+    slotsConsumed: foundKey.slotsConsumed,
     uids: foundKey.registeredUidsDetails,
     total: foundKey.registeredUids.length
   });
 });
 
-// Admin Remove / Delete a UID from a Key
-app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, (req, res) => {
+// Admin Remove / Delete a UID from a Key (Removes from BOTH HOMBRE Gateway & Master Upstream API, without freeing slot)
+app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, async (req, res) => {
   const { id, uid } = req.params;
   const adminIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'admin-console';
 
@@ -605,6 +622,9 @@ app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, (req, res) => {
 
   if (!foundKey.registeredUids) foundKey.registeredUids = [];
   if (!foundKey.registeredUidsDetails) foundKey.registeredUidsDetails = [];
+  if (foundKey.slotsConsumed === undefined) {
+    foundKey.slotsConsumed = foundKey.registeredUids.length;
+  }
 
   const initialCount = foundKey.registeredUids.length;
   foundKey.registeredUids = foundKey.registeredUids.filter(u => String(u).trim() !== cleanUid);
@@ -614,8 +634,34 @@ app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, (req, res) => {
     return res.status(404).json({ success: false, error: `UID ${cleanUid} was not found in this key` });
   }
 
+  // Quota slot remains consumed permanently (slotsConsumed is NOT decremented)
   foundKey.uidsCount = foundKey.registeredUids.length;
   writeJSON(KEYS_FILE, keys);
+
+  // Relay removal to Upstream Master API (POST https://mani272uidbypass.vercel.app/api/v1/uids/remove)
+  let upstreamRemoved = false;
+  let upstreamMsg = 'Removed from HOMBRE Gateway';
+  try {
+    const upstreamRes = await fetch(MASTER_REMOVE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-AUTH-KEY': MASTER_API_KEY
+      },
+      body: JSON.stringify({ uid: cleanUid })
+    });
+    upstreamRemoved = upstreamRes.ok;
+    const resText = await upstreamRes.text();
+    try {
+      const parsed = JSON.parse(resText);
+      upstreamMsg = parsed.message || (upstreamRemoved ? 'Removed from Upstream API' : parsed.error || 'Upstream notice');
+    } catch {
+      upstreamMsg = resText;
+    }
+  } catch (err) {
+    console.warn('Upstream removal notice:', err.message);
+    upstreamMsg = `Removed from Gateway (Upstream error: ${err.message})`;
+  }
 
   addLog({
     endpoint: '/api/admin/keys/:id/uids/delete',
@@ -624,14 +670,17 @@ app.delete('/api/admin/keys/:id/uids/:uid', requireAdminAuth, (req, res) => {
     uid: cleanUid,
     status: 200,
     success: true,
-    error: 'UID Removed by Admin (Slot Freed)',
+    error: `UID Removed from both APIs (Slot remains consumed: ${foundKey.slotsConsumed}/${foundKey.uidLimit || 'unlimited'})`,
     ip: adminIp,
     durationMs: 0
   });
 
   return res.json({
     success: true,
-    message: `UID ${cleanUid} successfully removed! 1 slot freed up.`,
+    message: `UID ${cleanUid} successfully removed from both APIs! (Quota slot remains consumed)`,
+    upstreamRemoved,
+    upstreamMessage: upstreamMsg,
+    slotsConsumed: foundKey.slotsConsumed,
     uids: foundKey.registeredUidsDetails,
     total: foundKey.registeredUids.length
   });
